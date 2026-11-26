@@ -22,6 +22,7 @@ import { resolveNavigation } from "@workbench/lib/plugins/navigation";
 import { workspaceBinding } from "@workbench/lib/plugins/registry";
 import { usePluginStore } from "@workbench/stores/use-plugin-store";
 import { usePluginViewScope } from "@workbench/hooks/use-plugin-view-scope";
+import { useMobileWeb } from "@workbench/hooks/use-mobile-web";
 
 const brand = <Link to="/" className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap text-base font-medium tracking-tight">
     <span className="size-5 bg-current" style={{ mask: "url(/logo.svg) center / contain no-repeat" }} />无限画布
@@ -53,6 +54,7 @@ function LayoutFrame({ entry, parentSignal, fallback, ...props }: Pick<PluginLay
 
 export default function UserLayout({ children }: { children: ReactNode }) {
     const tools = useContext(NavigationContext);
+    const mobileWeb = useMobileWeb();
     const { pathname } = useLocation();
     const canvas = useMatch("/canvas/:id");
     const extension = useMatch("/extensions/:pageId");
@@ -115,8 +117,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
             </div>
             {createPortal(children, pageRoot)}
             <StorageNotice>{(noticeOpen) => <AppConfigModal noticeOpen={noticeOpen} />}</StorageNotice>
-            <CanvasMcpBridge />
-            <AgentPanel />
+            {!mobileWeb ? <><CanvasMcpBridge /><AgentPanel /></> : null}
         </div>
     </NavigationCatalogContext.Provider>;
 }

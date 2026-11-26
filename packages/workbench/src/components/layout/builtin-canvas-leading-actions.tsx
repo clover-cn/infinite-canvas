@@ -48,6 +48,7 @@ function CanvasSidePanelAction({ ctx, canvasScope }: CanvasActionProps) {
                 else panel.openPanel();
             }}
             aria-label={open ? "收起面板" : "展开面板"}
+            aria-expanded={open}
             className="grid size-7 shrink-0 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10"
             style={{ color: theme.node.text }}
         >

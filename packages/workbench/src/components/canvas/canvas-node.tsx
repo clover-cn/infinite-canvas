@@ -2,16 +2,18 @@ import { PluginBoundary } from "@workbench/components/plugins/plugin-contributio
 import { nodes } from "@infinite-canvas/plugin-sdk/builtin";
 import { canvasBinding } from "@workbench/lib/plugins/runtime";
 import { usePluginStore } from "@workbench/stores/use-plugin-store";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { getPluginErrorMessage } from "@infinite-canvas/shared/plugins";
-import { GripHorizontal, Puzzle } from "lucide-react";
+import { FileText, GripHorizontal, Plus, Puzzle, Video } from "lucide-react";
 
 import { canvasThemes } from "@workbench/lib/canvas-theme";
 import { getNodeDefinition, getNodePluginId, readNodeResource, useNodeRegistryVersion } from "@workbench/lib/canvas/node-registry";
 import { buildNodeContext } from "@workbench/lib/canvas/plugin-node-context";
 import { useThemeStore } from "@workbench/stores/use-theme-store";
+import { CANVAS_TOUCH_EDGE } from "./use-canvas-touch";
+import { getImagePreviewRevision, loadImagePreview, previewUrlFor, subscribeImagePreviews } from "@workbench/services/image-storage";
 import { CanvasNodeType, type CanvasNodeData, type Position } from "@infinite-canvas/shared/canvas/schema/canvas";
 import type { CanvasNodeAppearance, CanvasNodeContext, CanvasPluginHost } from "@infinite-canvas/plugin-sdk";
 
@@ -26,6 +28,9 @@ type CanvasNodeProps = {
     isFocusRelated: boolean;
     isConnectionTarget: boolean;
     isConnecting: boolean;
+    portSelectionActive: boolean;
+    canCompletePort: boolean;
+    onExtend?: (event: React.MouseEvent, node: CanvasNodeData) => void;
     referenceSelectionState?: "target" | "disabled" | "available";
     showPanel: boolean;
     pluginHost?: CanvasPluginHost;
@@ -36,7 +41,8 @@ type CanvasNodeProps = {
     onSelectCapture?: (event: React.MouseEvent, nodeId: string) => void;
     onHoverStart: (nodeId: string) => void;
     onHoverEnd: (nodeId: string) => void;
-    onConnectStart: (event: React.MouseEvent, nodeId: string, handleType: "source" | "target") => void;
+    onConnectStart: (event: React.PointerEvent, nodeId: string, handleType: "source" | "target") => void;
+    onPortTap: (event: React.MouseEvent, nodeId: string, handleType: "source" | "target") => void;
     onResizeStart: (nodeId: string) => void;
     onResize: (nodeId: string, width: number, height: number, position?: Position) => void;
     onResizeEnd: (nodeId: string) => void;
@@ -60,6 +66,9 @@ export const CanvasNode = React.memo(function CanvasNode({
     isFocusRelated,
     isConnectionTarget,
     isConnecting,
+    portSelectionActive,
+    canCompletePort,
+    onExtend,
     referenceSelectionState,
     showPanel,
     pluginHost,
@@ -70,6 +79,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     onHoverStart,
     onHoverEnd,
     onConnectStart,
+    onPortTap,
     onResizeStart,
     onResize,
     onResizeEnd,
@@ -86,6 +96,8 @@ export const CanvasNode = React.memo(function CanvasNode({
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [titleDraft, setTitleDraft] = useState(data.title || "");
     const isGroup = data.type === CanvasNodeType.Group;
+    const canStartConnection = definition?.hasSourceHandle ?? true;
+    const compact = scale < 0.45 && (data.type === CanvasNodeType.Text || data.type === CanvasNodeType.Video);
     // Nodes with the interaction/move toggle ignore content pointer events in move mode and allow interaction in interactive mode.
     // forceInteractive states such as editing stay interactive, as do empty nodes so their upload and generation actions remain usable.
     const supportsInteractionToggle = Boolean(definition?.interactionToggle);
@@ -323,12 +335,12 @@ export const CanvasNode = React.memo(function CanvasNode({
                             pointerEvents: contentInteractive ? undefined : "none",
                         } as React.CSSProperties}
                 >
-                    <NodeContent
+                    {compact ? <CompactNodeContent node={data} theme={theme} /> : <NodeContent
                         node={data}
                         canvas={pluginHost?.canvas}
                         theme={theme}
                         pluginContext={pluginContext}
-                    />
+                    />}
                 </div>
 
                 {supportsInteractionToggle && hasResource && !forceInteractive && contentInteractive ? (
@@ -352,8 +364,22 @@ export const CanvasNode = React.memo(function CanvasNode({
                 {!referenceSelectionState ? <ResizeHandle corner="bottom-right" onMouseDown={handleResizeMouseDown} /> : null}
             </div>
 
-            {!referenceSelectionState && !isGroup ? <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
-            {!referenceSelectionState && (definition?.hasSourceHandle ?? true) ? <ConnectionHandleDot side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
+            {!referenceSelectionState && !isGroup ? <ConnectionHandleDot side="left" scale={scale} visible={portSelectionActive ? canCompletePort : hovered || isSelected || isConnecting} highlighted={canCompletePort} onPointerDown={(event) => onConnectStart(event, data.id, "target")} onClick={(event) => onPortTap(event, data.id, "target")} /> : null}
+            {!referenceSelectionState && canStartConnection ? <ConnectionHandleDot side="right" scale={scale} visible={hovered || isSelected || (isConnecting && !portSelectionActive)} onPointerDown={(event) => onConnectStart(event, data.id, "source")} onClick={(event) => onPortTap(event, data.id, "source")} /> : null}
+            {!referenceSelectionState && canStartConnection && onExtend && !isConnecting ? (
+                <button
+                    type="button"
+                    data-canvas-extend
+                    aria-label="创建下游节点"
+                    className="absolute left-full z-[65] hidden size-11 items-center justify-center rounded-full [@media(any-pointer:coarse)]:flex"
+                    style={{ top: `calc(50% + ${24 / scale}px)`, transform: `scale(${1 / scale})`, transformOrigin: "top left", color: theme.node.text, background: theme.toolbar.panel }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => onExtend(event, data)}
+                >
+                    <Plus className="size-5" />
+                </button>
+            ) : null}
 
             {/* Counter-scale the panel so its on-screen size stays constant while the canvas zooms. */}
             {showPanel && !isGroup && renderPanel ? (
@@ -364,6 +390,29 @@ export const CanvasNode = React.memo(function CanvasNode({
         </div>
     );
 });
+
+function CompactNodeContent({ node, theme }: Pick<NodeContentRendererProps, "node" | "theme">) {
+    const video = node.type === CanvasNodeType.Video;
+    const poster = video ? <CompactVideoPoster storageKey={node.metadata?.storageKey} /> : null;
+    const status = node.metadata?.status;
+    const label = status === "loading" ? "生成中" : status === "error" ? "生成失败" : video ? "视频" : "文本";
+    return (
+        <div className="relative grid size-full place-items-center overflow-hidden rounded-[inherit]" style={{ background: theme.node.fill, color: theme.node.text }}>
+            {poster}
+            <div className="relative flex items-center gap-3 rounded-lg px-4 py-2 text-2xl font-medium" style={{ background: theme.toolbar.panel }}>
+                {video ? <Video className="size-8" /> : <FileText className="size-8" />}
+                <span>{label}</span>
+            </div>
+        </div>
+    );
+}
+
+function CompactVideoPoster({ storageKey }: { storageKey?: string }) {
+    useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
+    useEffect(() => { void loadImagePreview(storageKey); }, [storageKey]);
+    const url = previewUrlFor(storageKey);
+    return url ? <img src={url} alt="" className="absolute inset-0 size-full object-contain" draggable={false} /> : null;
+}
 
 function NodeContent(props: NodeContentRendererProps) {
     const definition = getNodeDefinition(props.node.type);
@@ -396,17 +445,40 @@ function ResizeHandle({ corner, onMouseDown }: { corner: ResizeCorner; onMouseDo
     return <div className={`absolute z-50 size-7 ${positionClass}`} onMouseDown={(event) => onMouseDown(event, corner)} />;
 }
 
-function ConnectionHandleDot({ side, visible, onMouseDown }: { side: "left" | "right"; visible: boolean; onMouseDown: (event: React.MouseEvent) => void }) {
+function ConnectionHandleDot({ side, scale, visible, highlighted, onPointerDown, onClick }: {
+    side: "left" | "right";
+    scale: number;
+    visible: boolean;
+    highlighted?: boolean;
+    onPointerDown: (event: React.PointerEvent) => void;
+    onClick: (event: React.MouseEvent) => void;
+}) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const pressedWithTouch = useRef(false);
 
     return (
-        <div
-            className={`absolute top-1/2 z-30 flex size-12 -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150 ${
-                side === "left" ? "-left-6" : "-right-6"
+        <button
+            type="button"
+            data-canvas-port
+            data-canvas-no-zoom
+            aria-label={side === "left" ? "输入端口" : "输出端口"}
+            tabIndex={visible ? 0 : -1}
+            className={`absolute top-1/2 z-30 flex size-12 -translate-y-1/2 touch-none cursor-crosshair items-center justify-center transition-opacity duration-150 [@media(any-pointer:coarse)]:size-[var(--canvas-port-size)] ${
+                side === "left" ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2"
             } ${visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
-            onMouseDown={onMouseDown}
+            style={{ "--canvas-port-size": `${44 / scale}px` } as React.CSSProperties}
+            onPointerDown={(event) => {
+                pressedWithTouch.current = event.pointerType === "touch" && event.clientX >= CANVAS_TOUCH_EDGE && event.clientX < window.innerWidth - CANVAS_TOUCH_EDGE;
+                onPointerDown(event);
+            }}
+            onPointerCancel={() => { pressedWithTouch.current = false; }}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+                if (pressedWithTouch.current || event.detail === 0) onClick(event);
+                pressedWithTouch.current = false;
+            }}
         >
-            <div className="size-3 rounded-full border-2 transition-all hover:scale-125" style={{ background: theme.node.panel, borderColor: theme.node.muted }} />
-        </div>
+            <span className="size-3 rounded-full border-2 transition-all hover:scale-125 [@media(any-pointer:coarse)]:size-[var(--canvas-port-dot)]" style={{ "--canvas-port-dot": `${(highlighted ? 14 : 10) / scale}px`, background: highlighted ? theme.node.activeStroke : theme.node.panel, borderColor: highlighted ? theme.node.activeStroke : theme.node.muted } as React.CSSProperties} />
+        </button>
     );
 }

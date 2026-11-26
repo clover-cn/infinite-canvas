@@ -7,6 +7,7 @@ import { PluginScope } from "@infinite-canvas/plugin-sdk/scope";
 import { layouts, themes } from "@infinite-canvas/plugin-sdk/builtin";
 import { applicationBinding, pluginRegistry } from "@workbench/lib/plugins/registry";
 import { usePluginStore } from "@workbench/stores/use-plugin-store";
+import { useMobileWeb } from "@workbench/hooks/use-mobile-web";
 import { workbenchMessageOptions } from "@workbench/components/ui/sonner";
 import { network } from "@workbench/services/network/runtime";
 import { exportAppConfig, importAppConfig } from "@workbench/services/config-file";
@@ -45,8 +46,9 @@ function AppConfigPanel() {
     const config = useConfigStore((state) => state.config);
     const configModel = useConfigStore((state) => state.configModel);
     usePluginStore((state) => state.revision);
+    const mobileWeb = useMobileWeb();
     const appearanceEmpty = !pluginRegistry.query(themes, applicationBinding).length && !pluginRegistry.query(layouts, applicationBinding).length;
-    const appTabs = allTabs.filter((tab) => tab.id !== "builtin:appearance" || !appearanceEmpty);
+    const appTabs = allTabs.filter((tab) => (!appearanceEmpty || tab.id !== "builtin:appearance") && (!mobileWeb || tab.id !== "builtin:external-agent"));
     const current = appTabs.find((tab) => tab.id === selection.tab) ?? appTabs[0];
     const activeId = current.id;
     useLayoutEffect(() => {

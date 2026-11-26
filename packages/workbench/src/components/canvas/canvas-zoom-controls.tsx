@@ -16,8 +16,8 @@ export function CanvasZoomControls({ session, view, shortcutsOpen }: { session: 
     const dockStyle = { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 18px 45px rgba(0,0,0,.32)" : "0 16px 40px rgba(28,25,23,.12)" };
 
     return (
-        <div className="absolute bottom-5 left-5 z-50" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-            <div className="flex h-14 items-center gap-1 rounded-xl border px-2 shadow-lg backdrop-blur [&_[data-canvas-content]]:gap-1" style={dockStyle}>
+        <div className="absolute bottom-20 left-4 z-50 max-w-[calc(100%-2rem)] xl:bottom-5 xl:left-5" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+            <div className="flex h-10 items-center gap-1 overflow-x-auto rounded-xl border px-2 shadow-lg backdrop-blur xl:h-14 [&_[data-canvas-content]]:gap-1" style={dockStyle}>
                 <CanvasToolbarContent target={{ location: "canvas.zoomControls" }} items={[]} showLabels={false} />
             </div>
         </div>

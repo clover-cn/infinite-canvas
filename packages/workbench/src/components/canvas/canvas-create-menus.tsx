@@ -11,16 +11,46 @@ import { type ConnectionHandle } from "@workbench/types/canvas";
 export type PendingConnectionCreate = {
     connection: ConnectionHandle;
     position: Position;
+    menuPosition?: Position;
 };
 
 export function ConnectionCreateMenu({ pending, scale = 1, onClose }: { pending: PendingConnectionCreate; scale?: number; onClose: () => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const menuRef = useRef<HTMLDivElement>(null);
+    const position = pending.menuPosition ?? pending.position;
+    useLayoutEffect(() => {
+        const menu = menuRef.current;
+        const viewport = menu?.closest("[data-canvas-viewport]");
+        if (!menu || !viewport) return;
+        const fit = () => {
+            menu.style.translate = "";
+            const rect = menu.getBoundingClientRect();
+            const bounds = viewport.getBoundingClientRect();
+            const x = Math.max(bounds.left + 8, Math.min(rect.left, bounds.right - rect.width - 8));
+            const y = Math.max(bounds.top + 8, Math.min(rect.top, bounds.bottom - rect.height - 8));
+            menu.style.translate = `${(x - rect.left) / scale}px ${(y - rect.top) / scale}px`;
+        };
+        fit();
+        const observer = new ResizeObserver(fit);
+        observer.observe(viewport);
+        observer.observe(menu);
+        return () => observer.disconnect();
+    }, [position, scale]);
+    useEffect(() => {
+        const closeOutside = (event: PointerEvent) => {
+            if (event.target instanceof Node && !menuRef.current?.contains(event.target) && !(event.target instanceof Element && event.target.closest("[data-canvas-extend]"))) onClose();
+        };
+        document.addEventListener("pointerdown", closeOutside, true);
+        return () => document.removeEventListener("pointerdown", closeOutside, true);
+    }, [onClose]);
 
     return (
         <div
-            className="absolute z-[120] w-[240px] rounded-xl border p-1.5 shadow-lg backdrop-blur"
+            ref={menuRef}
+            className="absolute z-[120] max-h-[70dvh] w-[min(240px,calc(100vw-16px))] overflow-y-auto rounded-xl border p-1.5 shadow-lg backdrop-blur"
             data-connection-create-menu
-            style={{ left: pending.position.x, top: pending.position.y, transform: `scale(${1 / scale})`, transformOrigin: "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            data-canvas-no-zoom
+            style={{ left: position.x, top: position.y, transform: `scale(${1 / scale})`, transformOrigin: "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
         >

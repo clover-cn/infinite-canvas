@@ -60,7 +60,7 @@ export function CanvasToolbar({ session, view }: { session: CanvasSession; view:
     if (!project) return null;
 
     return (
-        <div ref={rootRef} className="pointer-events-none absolute bottom-5 z-50 flex justify-center" style={{ left: 300, right: 16 }} data-canvas-bottom-toolbar>
+        <div ref={rootRef} className="pointer-events-none absolute inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 flex justify-center xl:bottom-5 xl:left-[300px]" data-canvas-bottom-toolbar>
             <div className="thin-scrollbar pointer-events-auto flex h-14 max-w-full items-center gap-1 overflow-x-auto rounded-xl border px-2 shadow-lg backdrop-blur [&>*]:shrink-0" style={dockStyle}>
                 <CanvasToolbarContent target={{ location: "canvas.toolbar" }} items={[]} showLabels={false} />
             </div>
@@ -68,7 +68,7 @@ export function CanvasToolbar({ session, view }: { session: CanvasSession; view:
             {panel === "extensions" ? (
                 <div
                     className="thin-scrollbar pointer-events-auto absolute bottom-[72px] z-30 max-h-[50vh] w-[240px] -translate-x-1/2 overflow-y-auto rounded-xl border p-2 shadow-xl backdrop-blur"
-                    style={{ left: panelX || "50%", background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item }}
+                    style={{ left: panelX ? `clamp(120px, ${panelX}px, 100% - 120px)` : "50%", background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item }}
                 >
                     <CanvasMenuContent
                         title="扩展节点与工具"
@@ -82,7 +82,7 @@ export function CanvasToolbar({ session, view }: { session: CanvasSession; view:
             {panel === "appearance" ? (
                 <div
                     className="pointer-events-auto absolute bottom-[72px] z-30 w-[248px] -translate-x-1/2 rounded-xl border p-2.5 shadow-xl backdrop-blur"
-                    style={{ left: panelX || "50%", background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item }}
+                    style={{ left: panelX ? `clamp(124px, ${panelX}px, 100% - 124px)` : "50%", background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item }}
                 >
                     <div className="px-1 pb-2 text-sm font-medium opacity-65">画布外观</div>
                     <div className="px-1 pb-1.5 text-[11px] font-medium opacity-50">主题模式</div>

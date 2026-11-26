@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { canvasThemes, type CanvasBackgroundMode } from "@workbench/lib/canvas-theme";
 import { useThemeStore } from "@workbench/stores/use-theme-store";
 import type { ViewportTransform } from "@workbench/types/canvas";
+import { CANVAS_TOUCH_EDGE, useCanvasTouch, type CanvasSelectionStart } from "./use-canvas-touch";
 
 type InfiniteCanvasProps = {
     containerRef: React.RefObject<HTMLDivElement | null>;
@@ -10,7 +11,8 @@ type InfiniteCanvasProps = {
     tool: "select" | "pan";
     backgroundMode?: CanvasBackgroundMode;
     onViewportChange: (viewport: ViewportTransform) => void;
-    onCanvasMouseDown?: (event: React.PointerEvent<HTMLDivElement>) => void;
+    onSelectionStart?: (event: CanvasSelectionStart) => void;
+    onSelectionCancel?: (pointerId: number) => void;
     onCanvasDeselect?: () => void;
     onCanvasDoubleClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
     onContextMenu?: (event: React.MouseEvent) => void;
@@ -20,10 +22,12 @@ type InfiniteCanvasProps = {
 
 const navigationBoundary = "[data-canvas-no-zoom],[role='dialog'],[role='alertdialog'],[role='menu'],[role='listbox']";
 
-export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = "lines", onViewportChange, onCanvasMouseDown, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
+export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = "lines", onViewportChange, onSelectionStart, onSelectionCancel, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const touch = useCanvasTouch(viewport, onViewportChange, onSelectionStart, onSelectionCancel, onCanvasDeselect);
     const panState = useRef({
         isPanning: false,
+        pointerId: -1,
         startX: 0,
         startY: 0,
         initialX: 0,
@@ -115,10 +119,17 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
     };
 
     const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (event.pointerType === "touch") return;
         const target = event.target instanceof Element ? event.target : null;
         if (!target || !event.currentTarget.contains(target) || target.closest(navigationBoundary)) return;
         if (target?.closest("[data-connection-create-menu]")) return;
         const isBackgroundClick = !target?.closest("[data-node-id],[data-connection-id]");
+        if (event.pointerType === "pen" && event.button === 0 && isBackgroundClick) {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            onSelectionStart?.(event);
+            return;
+        }
         const temporaryTool = event.ctrlKey || isSpacePressed;
         const activeTool = temporaryTool ? (tool === "select" ? "pan" : "select") : tool;
         const shouldPan = event.button === 1 || (event.button === 0 && activeTool === "pan" && isBackgroundClick);
@@ -128,6 +139,7 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
             event.currentTarget.setPointerCapture(event.pointerId);
             panState.current = {
                 isPanning: true,
+                pointerId: event.pointerId,
                 startX: event.clientX,
                 startY: event.clientY,
                 initialX: viewport.x,
@@ -143,7 +155,16 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
         if (event.button === 0 && isBackgroundClick) {
             event.preventDefault();
             event.currentTarget.setPointerCapture(event.pointerId);
-            onCanvasMouseDown?.(event);
+            onSelectionStart?.(event);
+        }
+    };
+
+    const handleTouchStart = (event: React.PointerEvent<HTMLDivElement>) => {
+        const target = event.target;
+        if (!(target instanceof Element) || !event.currentTarget.contains(target) || target.closest(navigationBoundary)) return;
+        if (touch.start(event, target.hasAttribute("data-canvas-touch-surface"))) {
+            event.preventDefault();
+            event.stopPropagation();
         }
     };
 
@@ -155,7 +176,7 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
 
     useEffect(() => {
         const handlePointerMove = (event: PointerEvent) => {
-            if (!panState.current.isPanning) return;
+            if (!panState.current.isPanning || panState.current.pointerId !== event.pointerId) return;
 
             const dx = event.clientX - panState.current.startX;
             const dy = event.clientY - panState.current.startY;
@@ -175,10 +196,10 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
             });
         };
 
-        const handlePointerUp = () => {
-            if (!panState.current.isPanning) return;
+        const handlePointerUp = (event: PointerEvent) => {
+            if (!panState.current.isPanning || panState.current.pointerId !== event.pointerId) return;
 
-            if (!panState.current.hasMoved && panState.current.startedOnBackground) {
+            if (event.type === "pointerup" && !panState.current.hasMoved && panState.current.startedOnBackground) {
                 onCanvasDeselect?.();
             }
             panState.current.isPanning = false;
@@ -218,9 +239,15 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
     return (
         <div
             ref={containerRef}
-            className="relative h-full w-full select-none overflow-hidden"
+            data-canvas-viewport
+            className="group/canvas-viewport relative h-full w-full select-none overflow-hidden"
             style={{ background: theme.canvas.background, cursor }}
+            onPointerDownCapture={handleTouchStart}
             onPointerDown={handlePointerDown}
+            onPointerMove={touch.move}
+            onPointerUp={(event) => touch.end(event)}
+            onPointerCancel={(event) => touch.end(event, true)}
+            onLostPointerCapture={(event) => touch.end(event, true)}
             onDoubleClick={handleDoubleClick}
             onWheel={handleWheel}
             onContextMenu={onContextMenu}
@@ -228,6 +255,12 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
             onDrop={onDrop}
         >
             <CanvasGrid viewport={viewport} mode={backgroundMode} />
+            <div
+                aria-hidden="true"
+                data-canvas-touch-surface
+                className="absolute inset-y-0 touch-none group-data-[canvas-touch-active]/canvas-viewport:z-[125]"
+                style={{ left: `max(0px, calc(100% - 100vw + ${CANVAS_TOUCH_EDGE}px))`, right: CANVAS_TOUCH_EDGE }}
+            />
             <div
                 className="absolute origin-top-left"
                 style={{

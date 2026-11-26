@@ -7,6 +7,7 @@ import { getPluginErrorMessage } from "@infinite-canvas/shared/plugins";
 import { PluginBoundary } from "@workbench/components/plugins/plugin-contributions";
 import { workbenchMessageOptions } from "@workbench/components/ui/sonner";
 import { usePluginViewScope } from "@workbench/hooks/use-plugin-view-scope";
+import { useMobileWeb } from "@workbench/hooks/use-mobile-web";
 import { canvasThemes } from "@workbench/lib/canvas-theme";
 import { resolveApplicationActions } from "@workbench/lib/plugins/application-actions";
 import { usePluginStore } from "@workbench/stores/use-plugin-store";
@@ -29,11 +30,12 @@ export function UserStatusActions({ showConfig = true, variant = "default", regi
     const binding = usePluginViewScope(`application-actions:${viewId}:${region}`, undefined, canvasScope?.signal);
     usePluginStore((state) => state.revision);
     const theme = useThemeStore((state) => state.theme);
+    const mobileWeb = useMobileWeb();
     const style = variant === "canvas" ? { color: canvasThemes[theme].node.text } : undefined;
     const actions = binding ? resolveApplicationActions({ variant, region, showConfig, canvasScope }, binding) : [];
 
     return <div data-slot="user-status-actions" data-region={region} className={region === "canvas-leading" ? "flex min-w-0 items-center gap-2" : "inline-flex shrink-0 items-center gap-1"}>
-        {actions.map(({ item, ctx, entry, assertActive }) => {
+        {actions.filter(({ item }) => !mobileWeb || item.id !== "builtin:agent").map(({ item, ctx, entry, assertActive }) => {
             const failed = (error: unknown) => {
                 console.error(`[plugins] ${entry.pluginId} ${entry.point}/${entry.id}/${item.id} action`, error);
                 if (!binding!.signal.aborted && !ctx.scope.signal.aborted) toast.error(getPluginErrorMessage(error), workbenchMessageOptions.error);

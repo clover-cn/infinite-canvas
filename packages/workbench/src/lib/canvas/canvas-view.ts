@@ -28,9 +28,11 @@ function measureFocusFrame(container: HTMLElement, nodeId: string) {
     const panelRect = container.querySelector<HTMLElement>(`[data-node-id="${nodeId}"] [data-node-panel]`)?.getBoundingClientRect();
     const toolbarRect = document.querySelector<HTMLElement>(`[data-node-toolbar="${nodeId}"]`)?.getBoundingClientRect();
     const dockRect = document.querySelector<HTMLElement>("[data-canvas-bottom-toolbar]")?.getBoundingClientRect();
+    const dockedPanel = container.parentElement?.querySelector<HTMLElement>(`[data-canvas-docked-panel="${nodeId}"]`)?.getBoundingClientRect();
     const below = nodeRect && panelRect ? panelRect.bottom - nodeRect.bottom : 0;
     const above = nodeRect && toolbarRect ? nodeRect.top - toolbarRect.top : 0;
-    return { above, below, bottomInset: dockRect && below > 0 ? Math.max(0, container.getBoundingClientRect().bottom - dockRect.top) : 0 };
+    const bottomOverlay = dockedPanel ?? (below > 0 ? dockRect : undefined);
+    return { above, below, bottomInset: bottomOverlay ? Math.max(0, container.getBoundingClientRect().bottom - bottomOverlay.top) : 0 };
 }
 
 export function createCanvasView(session: CanvasSession, container: { readonly current: HTMLElement | null }, onHoverNode: (nodeId: string | null) => void, onFocus: () => void): CanvasViewController {
