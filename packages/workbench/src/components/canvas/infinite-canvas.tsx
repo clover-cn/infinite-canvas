@@ -21,6 +21,7 @@ type InfiniteCanvasProps = {
 };
 
 const navigationBoundary = "[data-canvas-no-zoom],[role='dialog'],[role='alertdialog'],[role='menu'],[role='listbox']";
+const wheelBoundary = `${navigationBoundary},[data-canvas-wheel-scroll]`;
 
 export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = "lines", onViewportChange, onSelectionStart, onSelectionCancel, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -98,7 +99,7 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
     const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
         const target = event.target instanceof Element ? event.target : null;
         // Portal 的 React 事件会沿组件树回到画布；只有画布 DOM 内的事件才调整视口。
-        if (!target || !event.currentTarget.contains(target) || target.closest(navigationBoundary)) return;
+        if (!target || !event.currentTarget.contains(target) || target.closest(wheelBoundary)) return;
 
         const delta = -event.deltaY;
         const factor = Math.pow(1.1, delta / 100);
@@ -225,7 +226,7 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
         // Prevent canvas scrolling from moving the page while preserving native scrolling inside overlays and dialogs.
         const preventWheelScroll = (event: WheelEvent) => {
             const target = event.target instanceof Element ? event.target : null;
-            if (target?.closest(navigationBoundary)) return;
+            if (target?.closest(wheelBoundary)) return;
             event.preventDefault();
         };
         container.addEventListener("wheel", preventWheelScroll, { passive: false });
