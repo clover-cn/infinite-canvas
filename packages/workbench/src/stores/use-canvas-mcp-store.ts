@@ -1,7 +1,11 @@
 import { create } from "zustand";
 import { storage } from "@workbench/services/storage/runtime";
 
-export const canvasMcpClientId = crypto.randomUUID();
+let clientId: string | undefined;
+
+export function getCanvasMcpClientId() {
+    return clientId ??= crypto.randomUUID();
+}
 
 /** 只有本地服务提供的网页能被外部 Agent 操作，连接同源服务。 */
 type CanvasMcpStore = {

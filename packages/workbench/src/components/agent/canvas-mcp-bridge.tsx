@@ -8,7 +8,7 @@ import { isToolName, parseToolInput } from "@infinite-canvas/shared/canvas/tools
 import { canvasToolError } from "@infinite-canvas/shared/canvas/tools/errors";
 import { useAgentStore } from "@workbench/stores/use-agent-store";
 import { openLocalSocket } from "@workbench/lib/local-socket";
-import { canvasMcpClientId, useCanvasMcpStore } from "@workbench/stores/use-canvas-mcp-store";
+import { getCanvasMcpClientId, useCanvasMcpStore } from "@workbench/stores/use-canvas-mcp-store";
 
 export function CanvasMcpBridge() {
     const enabled = useCanvasMcpStore((state) => state.enabled);
@@ -80,7 +80,7 @@ export function CanvasMcpBridge() {
                 } finally { calls.delete(request.requestId); }
             })().catch(reportError);
         };
-        const closeSocket = openLocalSocket(`/events?clientId=${canvasMcpClientId}`, (type, data) => {
+        const closeSocket = openLocalSocket(`/events?clientId=${getCanvasMcpClientId()}`, (type, data) => {
             if (type === "hello") hello(data);
             else if (type === "tool_cancel") calls.get(data.requestId)?.abort();
             else if (type === "tool_call") toolCall(data);
@@ -109,6 +109,6 @@ export function CanvasMcpBridge() {
 }
 
 async function canvasBridgeRequest(path: string, body: unknown, signal?: AbortSignal) {
-    const response = await fetch(`${path}?clientId=${canvasMcpClientId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal });
+    const response = await fetch(`${path}?clientId=${getCanvasMcpClientId()}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal });
     if (!response.ok) throw new Error("CANVAS_CONNECTION_FAILED");
 }
