@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import type { PluginScope } from "@infinite-canvas/plugin-sdk/scope";
 import { PluginError, type InstalledPlugin } from "@infinite-canvas/shared/plugins";
 import { plugins } from "@workbench/services/plugins/runtime";
@@ -6,7 +7,7 @@ const mounts = new Map<string, { record: InstalledPlugin; scope: PluginScope }>(
 let registration: Promise<void> | undefined;
 
 function workerReady(base: URL, signal: AbortSignal) {
-    if (!navigator.serviceWorker) throw new PluginError("PLUGIN_LOAD_FAILED");
+    if (!navigator.serviceWorker) throw new PluginError("PLUGIN_SECURE_CONTEXT_REQUIRED");
     const workers = navigator.serviceWorker;
     const script = new URL("plugin-files-sw.js", base).href;
     registration ??= (async () => {
@@ -65,7 +66,7 @@ export function developmentFilesBase(record: InstalledPlugin, instance: string) 
 }
 
 export async function openClientFiles(record: InstalledPlugin, scope: PluginScope) {
-    const instance = crypto.randomUUID();
+    const instance = nanoid();
     let base: string;
     if (record.local) base = developmentFilesBase(record, instance);
     else if (plugins.clientBase) base = plugins.clientBase(record, instance);

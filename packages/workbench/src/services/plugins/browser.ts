@@ -1,5 +1,6 @@
 import { unpackTar } from "modern-tar";
 import mime from "mime";
+import { nanoid } from "nanoid";
 import { PLUGIN_PACKAGE_MAX_BYTES, assertPluginConflicts, type InstalledPlugin, readPluginClientFiles, DEFAULT_PLUGIN_REGISTRY, PluginError, fetchPluginIndex, fetchPluginTarball, pluginArchiveFiles, readPluginArchive, pluginRegistrySchema, type PluginAdapter, type PluginInstall, type PluginPackageInfo, type PluginRegistryConfig } from "@infinite-canvas/shared/plugins";
 import { storage } from "@workbench/services/storage/runtime";
 import { network } from "@workbench/services/network/runtime";
@@ -54,13 +55,14 @@ export function createBrowserPlugins(): PluginAdapter {
     const archiveRecord = async (bytes: Uint8Array, registry: string, signal?: AbortSignal, expectedName?: string) => {
         const { pkg, files: archive } = await readArchive(bytes, signal);
         if (expectedName && pkg.name !== expectedName) throw new PluginError("PLUGIN_INVALID");
-        const token = crypto.randomUUID();
+        const token = nanoid();
         const record: BrowserPlugin = { package: pkg, registry, enabled: true, installedAt: new Date().toISOString(), sourceId: token, uploaded: registry === "" };
         const files = new Map<string, Blob>();
         const entry = pkg.infiniteCanvas.client;
         const source = new TextDecoder().decode(archive.get(entry));
         const index = archive.get(`${entry}.files.json`);
         record.clientFiles = readPluginClientFiles(pkg, token, index && JSON.parse(new TextDecoder().decode(index)));
+        if (record.clientFiles.files.length > 1 && !navigator.serviceWorker) throw new PluginError("PLUGIN_SECURE_CONTEXT_REQUIRED");
         for (const file of record.clientFiles.files) {
             if (file === entry) continue;
             const data = archive.get(file);

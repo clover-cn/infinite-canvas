@@ -1,5 +1,7 @@
+import { digestSha2 } from "./sha2.js";
+
 export async function sha256(bytes: ArrayBuffer) {
-    const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    const hash = await digestSha2("SHA-256", new Uint8Array(bytes));
     return Array.from(hash, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 

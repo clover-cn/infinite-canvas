@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { maxSatisfying, satisfies } from "semver";
+import { digestSha2 } from "./utils/sha2.js";
 
 export const DEFAULT_PLUGIN_REGISTRY = "https://raw.githubusercontent.com/basketikun/infinite-canvas/plugins-dist-v1/index.json";
 /** 宿主提供的插件 API 版本；插件版本声明的 pluginApi 必须与之相等才可安装。 */
@@ -110,6 +111,7 @@ export const pluginErrorMessages = {
     PLUGIN_PACKAGE_TOO_LARGE: "插件包超过 30 MB，请精简素材后重试。",
     PLUGIN_PACKAGE_INVALID: "无法读取插件包，请确认上传的是 pnpm pack 生成的 .tgz 文件。",
     PLUGIN_LOAD_FAILED: "插件启动失败，请停用后重新启用，或更新插件。",
+    PLUGIN_SECURE_CONTEXT_REQUIRED: "此插件包含多个客户端文件。请在支持 Service Worker 的浏览器中，通过 HTTPS 或 localhost 打开工作台后安装。",
     PLUGIN_NOT_FOUND: "插件已不可用，请重新安装。",
     PLUGIN_TASK_UNAVAILABLE: "无法查看这项任务，请使用发起任务的插件并打开原作品。",
     PLUGIN_CHAT_BUSY: "会话正在使用。请先处理未发送的草稿，等回复和保存结束后重试。",
@@ -243,7 +245,9 @@ export async function fetchPluginTarball(fetchResource: FetchResource, registry:
     const selected = entry.versions[version];
     const bytes = new Uint8Array(await (await fetchResource(new URL(selected.tarball, registry).href, signal)).arrayBuffer());
     if (bytes.byteLength > PLUGIN_PACKAGE_MAX_BYTES) throw new PluginError("PLUGIN_PACKAGE_TOO_LARGE");
-    const digest = new Uint8Array(await crypto.subtle.digest("SHA-512", bytes));
+    signal?.throwIfAborted();
+    const digest = await digestSha2("SHA-512", bytes);
+    signal?.throwIfAborted();
     if (selected.integrity !== `sha512-${btoa(String.fromCharCode(...digest))}`) throw new PluginError("PLUGIN_INVALID");
     return { bytes, version };
 }

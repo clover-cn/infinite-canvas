@@ -431,9 +431,10 @@ export async function activatePlugin(pkg: PluginPackage, source?: string | Insta
     catch (error) {
         if (scope.signal.aborted) throw new PluginError("PLUGIN_INACTIVE", { cause: error });
         await deactivatePlugin(id);
-        setPluginStatus(id, "failed", "PLUGIN_LOAD_FAILED");
+        const code = error instanceof PluginError && error.code === "PLUGIN_SECURE_CONTEXT_REQUIRED" ? error.code : "PLUGIN_LOAD_FAILED";
+        setPluginStatus(id, "failed", code);
         console.error(`[plugins] ${id} activation failed`, error);
-        throw new PluginError("PLUGIN_LOAD_FAILED", { cause: error });
+        throw new PluginError(code, { cause: error });
     }
 }
 

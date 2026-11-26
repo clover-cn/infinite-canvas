@@ -12,6 +12,7 @@
     "prepack": "tsc -p tsconfig.json --noEmit false --declaration --noCheck --rootDir src --outDir dist"
   },
   "dependencies": {
+    "@noble/hashes": "2.4.0",
     "fast-json-stable-stringify": "2.1.0",
     "fflate": "^0.8.3",
     "semver": "^7.7.0",

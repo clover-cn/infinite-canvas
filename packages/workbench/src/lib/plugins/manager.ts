@@ -81,7 +81,8 @@ function reconcile(records: readonly InstalledPlugin[]) {
 
 async function settle(id: string) {
     await loading.get(id);
-    if (usePluginStore.getState().states[id]?.status === "failed") throw new PluginError("PLUGIN_LOAD_FAILED");
+    const state = usePluginStore.getState().states[id];
+    if (state?.status === "failed") throw new PluginError(state.error ?? "PLUGIN_LOAD_FAILED");
 }
 
 export function refreshPlugins() {
