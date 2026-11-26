@@ -7,14 +7,14 @@ import { Button as SettingsButton } from "@infinite-canvas/plugin-sdk/ui/button"
 import { Input as SettingsInput } from "@infinite-canvas/plugin-sdk/ui/input";
 import { ChevronRight, CircleAlert, CircleX, CodeXml, LoaderCircle, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@infinite-canvas/plugin-sdk/ui/select";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ModelIcon } from "@workbench/components/model-icon";
 import { workbenchMessageOptions } from "@workbench/components/ui/sonner";
 import { defaultCallScriptId, detectChannelModel } from "@workbench/lib/model-utils";
 import { channels } from "@workbench/services/channels/runtime";
-import { channelWrites, createModelGroup, useConfigStore } from "@workbench/stores/use-config-store";
+import { channelWrites, useConfigStore } from "@workbench/stores/use-config-store";
 import { listCallScripts, useCallScriptStore } from "@workbench/stores/use-call-script-store";
 import { modelCapabilities } from "@infinite-canvas/shared/models";
 import { ModelCallSelectModal } from "./model-call-select-modal";
@@ -24,7 +24,7 @@ import { ChannelSegments } from "./channel-segments";
 import { SettingsPasswordInput } from "./settings-network-controls";
 import styles from "./app-config-modal.module.css";
 
-export function ChannelEditorPanel({ channel, groupId, onChange, newChannel, sponsors }: { channel: ModelChannel; groupId?: string; onChange: (channel: ModelChannel) => void; newChannel?: boolean; sponsors?: ReactNode }) {
+export function ChannelEditorPanel({ channel, groupId, onChange }: { channel: ModelChannel; groupId?: string; onChange: (channel: ModelChannel) => void }) {
     usePluginStore((state) => state.revision);
     const savedScripts = useCallScriptStore((state) => state.scripts);
     const removedBuiltinIds = useCallScriptStore((state) => state.removedBuiltinIds);
@@ -65,7 +65,7 @@ export function ChannelEditorPanel({ channel, groupId, onChange, newChannel, spo
             setFetched(null);
             setLoading(false);
         }
-        onChange({ ...channel, groups: group ? channel.groups.map((item) => item.id === groupId ? { ...item, ...value } : item) : [createModelGroup({ name: "默认分组", ...value })] });
+        onChange({ ...channel, groups: channel.groups.map((item) => item.id === groupId ? { ...item, ...value } : item) });
     };
     const updateModel = (model: ChannelModel) => patchGroup({ models: group!.models.map((current) => current.name === model.name ? model : current) });
     const selectModels = (names: string[], checked: boolean) => {
@@ -143,16 +143,7 @@ export function ChannelEditorPanel({ channel, groupId, onChange, newChannel, spo
     return (
         <div className="flex h-full min-h-0 flex-col">
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
-                {newChannel ? (
-                    <div className="channel-models settings-network generation-workspace-controls flex min-h-0 flex-1 flex-col gap-4 max-lg:flex-none">
-                        <div className="flex flex-wrap items-end gap-3">
-                            {keyField}
-                            {formatControl}
-                            {fetchControl}
-                        </div>
-                        {sponsors}
-                    </div>
-                ) : group ? (
+                {group ? (
                     <div className="channel-models settings-network generation-workspace-controls flex min-h-0 flex-1 flex-col gap-4 max-lg:flex-none">
                         <>
                             <div className="channel-connection settings-network generation-workspace-controls grid min-w-0 shrink-0 items-start gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">

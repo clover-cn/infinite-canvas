@@ -22,7 +22,7 @@ const tabs: DocsSection[] = [
   { title: '开发文档', description: '本地开发与内部结构', href: '/docs/development/local-development', prefix: '/docs/development', pages: ['local-development', 'local-server-architecture', 'canvas-mcp', 'canvas-data-structure', 'call-scripts', 'call-script-packages', 'builtin-call-scripts', 'plugin-development'], icon: Code2 },
   { title: '项目进度', description: '变更、待测试与待办', href: '/docs/progress/changelog', prefix: '/docs/progress', pages: ['changelog', 'pending-test', 'todo'], icon: ListChecks },
   { title: '商务合作', description: '合作方式与开源许可', href: '/docs/business/business', prefix: '/docs/business', pages: ['business', 'license'], icon: Handshake },
-  { title: '赞助支持', description: '赞助项目与安全说明', href: '/docs/support/sponsor', prefix: '/docs/support', pages: ['sponsor', 'security'], icon: HeartHandshake },
+  { title: '支持与安全', description: '项目支持与漏洞提交', href: '/docs/support/security', prefix: '/docs/support', pages: ['security', 'project-support'], icon: HeartHandshake },
 ];
 
 export function DocsSidebarTabs() {

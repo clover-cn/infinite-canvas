@@ -33,7 +33,7 @@
 ## 支持与安全
 
 - [漏洞提交](/docs/support/security)
-- [赞助支持](/docs/support/sponsor)
+- [项目支持](/docs/support/project-support)
 
 ## 项目进度
 

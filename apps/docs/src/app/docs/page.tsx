@@ -14,7 +14,7 @@ export default async function Page() {
   return (
     <DocsPage toc={toc} tableOfContent={{ style: 'clerk' }}>
       <DocsTitle>无限画布文档</DocsTitle>
-      <DocsDescription>功能说明、操作手册、部署方式、开发文档、商务合作与赞助支持</DocsDescription>
+      <DocsDescription>功能说明、操作手册、部署方式、开发文档、商务合作与安全说明</DocsDescription>
       <DocsBody>
         <Markdown components={getMDXComponents()} remarkPlugins={[remarkHeading]}>
           {content}
@@ -26,5 +26,5 @@ export default async function Page() {
 
 export const metadata: Metadata = {
   title: '无限画布文档',
-  description: '功能说明、操作手册、部署方式、开发文档、商务合作与赞助支持',
+  description: '功能说明、操作手册、部署方式、开发文档、商务合作与安全说明',
 };
