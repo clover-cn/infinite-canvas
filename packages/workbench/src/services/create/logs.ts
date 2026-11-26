@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import type { StoredOutputAudio, StoredOutputImage, StoredOutputVideo, WorkbenchVideoTask } from "@infinite-canvas/shared/sync-records";
 import type { AiConfig } from "@workbench/stores/use-config-store";
 import type { ReferenceImage } from "@workbench/types/image";
@@ -81,7 +82,7 @@ export type CreateLog = ImageLog | VideoLog | AudioLog;
 export type CreateSession = { id: string; title: string; count: number; updatedAt: number };
 
 export function createSessionId() {
-    return crypto.randomUUID();
+    return nanoid();
 }
 
 /** 记录没有会话编号时各自成为一条历史，避免旧记录被并进别的对话。 */
@@ -117,10 +118,10 @@ export function sessionLogs(logs: CreateLog[], sessionId: string) {
 }
 
 export function buildImageLog(prompt: string, model: string, config: AiConfig, references: ReferenceImage[], sessionId: string, count: number): ImageLog {
-    const id = crypto.randomUUID();
+    const id = nanoid();
     return {
-        kind: "image", id, generationId: crypto.randomUUID(), sessionId,
-        slots: Array.from({ length: count }, () => ({ id: crypto.randomUUID() })),
+        kind: "image", id, generationId: nanoid(), sessionId,
+        slots: Array.from({ length: count }, () => ({ id: nanoid() })),
         createdAt: Date.now(), title: prompt.slice(0, 18) || "未命名", prompt,
         time: new Date().toLocaleString("zh-CN", { hour12: false }),
         model,
@@ -140,7 +141,7 @@ export function buildVideoLog(prompt: string, model: string, config: AiConfig, r
         videoMode: config.videoMode === "reference" ? "reference" : "frames",
     };
     return {
-        kind: "video", id: crypto.randomUUID(), generationId: crypto.randomUUID(), sessionId,
+        kind: "video", id: nanoid(), generationId: nanoid(), sessionId,
         createdAt: Date.now(), title: prompt.slice(0, 18) || "未命名", prompt,
         time: new Date().toLocaleString("zh-CN", { hour12: false }),
         model, config: logConfig, references, durationMs: 0,
@@ -151,7 +152,7 @@ export function buildVideoLog(prompt: string, model: string, config: AiConfig, r
 
 export function buildAudioLog(prompt: string, model: string, config: AiConfig, sessionId: string): AudioLog {
     return {
-        kind: "audio", id: crypto.randomUUID(), generationId: crypto.randomUUID(), sessionId,
+        kind: "audio", id: nanoid(), generationId: nanoid(), sessionId,
         createdAt: Date.now(), title: prompt.slice(0, 18) || "未命名", prompt,
         time: new Date().toLocaleString("zh-CN", { hour12: false }),
         model,

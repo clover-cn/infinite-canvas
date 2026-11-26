@@ -404,7 +404,7 @@ export function useNodeGeneration(session: CanvasSession, { setDialogNodeId, cap
             const editingTextNode = mode === "text" && Boolean(sourceTextContent);
             const sourceResource = readNodeResource(sourceNode, "execute", commandContext.scope);
             const generationContext = buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${prompt}` : prompt, commandContext.scope);
-            const webVideoSubmissionId = mode === "video" && !models.tasks ? crypto.randomUUID() : undefined;
+            const webVideoSubmissionId = mode === "video" && !models.tasks ? nanoid() : undefined;
             const target = sourceNode.type === mode ? sourceNode : createCanvasNode(mode, {
                 x: sourceNode.position.x + sourceNode.width + 96 + getNodeSpec(mode).width / 2,
                 y: sourceNode.position.y + sourceNode.height / 2,
@@ -689,7 +689,7 @@ export function useNodeGeneration(session: CanvasSession, { setDialogNodeId, cap
             const useReferenceImages = generationType ? generationType === "edit" : Boolean(context?.referenceImages.length);
             const sourceResource = useReferenceImages && !hasSavedImageMetadata ? readNodeResource(node, "execute", commandContext.scope) : null;
             setRunningNodeId(node.id);
-            const webVideoSubmissionId = node.type === CanvasNodeType.Video && !models.tasks ? crypto.randomUUID() : undefined;
+            const webVideoSubmissionId = node.type === CanvasNodeType.Video && !models.tasks ? nanoid() : undefined;
             const controller = startGenerationRequest(node.id, node.id, node.id, new AbortController(), AbortSignal.any([commandContext.signal, ...(context ? [context.signal] : []), ...(sourceResource ? [sourceResource.signal] : [])]));
             if (node.type !== CanvasNodeType.Text && node.type !== CanvasNodeType.Audio && node.type !== CanvasNodeType.Video) {
                 generationRequestsRef.current.get(node.id)!.mediaTarget = { revision: session.getSnapshot().revision, type: node.type, originType: node.type, slotId: imageId };

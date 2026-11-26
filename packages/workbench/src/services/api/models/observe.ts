@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import type { ModelExecutionConfig } from "@infinite-canvas/shared/model-execution";
 import type { ModelCallFinished, ModelCallKind, ModelCallRequest, ModelCallResponse, ModelCallStarted, ModelCallUpstream, ModelCallUsage } from "@infinite-canvas/shared/model-calls";
 import { ModelExecutionError, modelErrorMessages } from "@infinite-canvas/shared/model-http";
@@ -11,7 +12,7 @@ import type { ModelAdapter } from "./types";
 export function startModelCall(kind: ModelCallKind, config: ModelExecutionConfig, signal?: AbortSignal, request?: ModelCallRequest) {
     const target = config.groupId ? findModelGroup(useConfigStore.getState().config.channels, config.groupId) : undefined;
     const started: ModelCallStarted = {
-        id: crypto.randomUUID(), kind, model: config.model, startedAt: Date.now(),
+        id: nanoid(), kind, model: config.model, startedAt: Date.now(),
         channelId: target?.channel.id, channelName: target?.channel.name,
         groupId: config.groupId, groupName: target?.group.name,
         ...(request && { request }),
