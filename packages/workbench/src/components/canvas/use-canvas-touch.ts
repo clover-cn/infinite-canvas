@@ -3,9 +3,12 @@ import type { Position } from "@infinite-canvas/shared/canvas/schema/canvas";
 import type { ViewportTransform } from "@workbench/types/canvas";
 
 export const CANVAS_TOUCH_EDGE = 16;
+export const CANVAS_DRAG_SLOP = 3;
 const PAN_DELAY = 40;
 const SELECT_DELAY = 500;
-const DRAG_SLOP = 3;
+export function isCanvasTouchEdge(clientX: number) {
+    return clientX < CANVAS_TOUCH_EDGE || clientX >= window.innerWidth - CANVAS_TOUCH_EDGE;
+}
 
 export type CanvasSelectionStart = Pick<PointerEvent, "button" | "clientX" | "clientY" | "pointerId" | "shiftKey">;
 
@@ -102,7 +105,7 @@ export function useCanvasTouch(
 
     function start(event: PointerEvent<HTMLDivElement>, background: boolean) {
         if (event.pointerType !== "touch" || event.button !== 0) return false;
-        if (event.clientX < CANVAS_TOUCH_EDGE || event.clientX >= window.innerWidth - CANVAS_TOUCH_EDGE) return false;
+        if (isCanvasTouchEdge(event.clientX)) return false;
         const point = { x: event.clientX, y: event.clientY };
         const gesture = gestureRef.current;
         if (gesture) {
@@ -160,7 +163,7 @@ export function useCanvasTouch(
         }
 
         if (gesture.mode !== "waiting" && gesture.mode !== "pan" && gesture.mode !== "after-pinch") return;
-        if (Math.hypot(point.x - gesture.start.x, point.y - gesture.start.y) > DRAG_SLOP) {
+        if (Math.hypot(point.x - gesture.start.x, point.y - gesture.start.y) > CANVAS_DRAG_SLOP) {
             gesture.moved = true;
             window.clearTimeout(gesture.selectTimer);
         }

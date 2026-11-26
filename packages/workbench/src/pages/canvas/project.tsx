@@ -4,7 +4,7 @@ import { getPluginErrorMessage, PluginError } from "@infinite-canvas/shared/plug
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type SetStateAction } from "react";
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Group, LoaderCircle, Video } from "lucide-react";
+import { ChevronDown, ChevronUp, Group, LoaderCircle, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 
 import { useConfigStore } from "@workbench/stores/use-config-store";
@@ -21,7 +21,7 @@ import { CanvasNodeContextMenu } from "@workbench/components/canvas/canvas-conte
 import { CanvasNodeHoverToolbar, CanvasNodeInfoModal } from "@workbench/components/canvas/canvas-node-hover-toolbar";
 import { CanvasSelectionToolbar } from "@workbench/components/canvas/canvas-selection-toolbar";
 import { InfiniteCanvas } from "@workbench/components/canvas/infinite-canvas";
-import type { CanvasSelectionStart } from "@workbench/components/canvas/use-canvas-touch";
+import { CANVAS_DRAG_SLOP, isCanvasTouchEdge, type CanvasSelectionStart } from "@workbench/components/canvas/use-canvas-touch";
 import { Minimap } from "@workbench/components/canvas/canvas-mini-map";
 import { CanvasNode } from "@workbench/components/canvas/canvas-node";
 import { CanvasToolbar } from "@workbench/components/canvas/canvas-toolbar";
@@ -66,7 +66,7 @@ import { registerCanvasViewCommands } from "@workbench/lib/canvas/canvas-view-co
 import { getGroupResourceNodes, getNodeMediaResource, isCanvasReferenceNode } from "@workbench/lib/canvas/canvas-resource-references";
 import { canvasNeighbors } from "@workbench/lib/canvas/graph-index";
 import { canGroupSelectedNodes, canUngroupSelectedNodes, findContainingGroupId, findGroupDropTarget, snapNodesIntoGroup } from "@infinite-canvas/shared/canvas/ops/groups";
-import { getConnectionTargetAnchor, normalizeConnection } from "@workbench/lib/canvas/canvas-node-geometry";
+import { CANVAS_NODE_DETAIL_SCALE, getConnectionTargetAnchor, normalizeConnection } from "@workbench/lib/canvas/canvas-node-geometry";
 import {
     audioExtension,
     imageExtension,
@@ -89,10 +89,21 @@ type ConnectionDropTarget = {
     isNearNode: boolean;
 };
 
+type ConnectionGesture = {
+    id: number;
+    handle: ConnectionHandle;
+    start: Position;
+    dragging: boolean;
+};
+
 type ImagePreviewRecord = { nodeId: string; title: string; url?: string; close: () => void };
 
 const CONNECTION_HANDLE_HIT_RADIUS = 40;
 const CONNECTION_NODE_HIT_PADDING = 32;
+
+function hasDragged(startX: number, startY: number, endX: number, endY: number) {
+    return Math.hypot(endX - startX, endY - startY) > CANVAS_DRAG_SLOP;
+}
 
 export default function CanvasPage() {
     const { id: projectId = "" } = useParams<{ id: string }>();
@@ -148,6 +159,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
     const nodeDraggingRef = useRef(false);
     const dragRef = useRef<{
         isDraggingNode: boolean;
+        pointerId: number | null;
         hasMoved: boolean;
         startX: number;
         startY: number;
@@ -156,6 +168,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
         movedIds: Set<string>;
     }>({
         isDraggingNode: false,
+        pointerId: null,
         hasMoved: false,
         startX: 0,
         startY: 0,
@@ -189,7 +202,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
     const [connectingParams, setConnectingParams] = useState<ConnectionHandle | null>(null);
     const [portSelectionActive, setPortSelectionActive] = useState(false);
-    const connectionPointerId = useRef<number | null>(null);
+    const connectionGesture = useRef<ConnectionGesture | null>(null);
     const [connectionTargetNodeId, setConnectionTargetNodeId] = useState<string | null>(null);
     const [pendingConnectionCreate, setPendingConnectionCreate] = useState<PendingConnectionCreate | null>(null);
     const [mouseWorld, setMouseWorld] = useState<Position>({ x: 0, y: 0 });
@@ -378,7 +391,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
         connectingParamsRef.current = next;
         setConnectingParams(next);
         if (!next) {
-            connectionPointerId.current = null;
+            connectionGesture.current = null;
             setPortSelectionActive(false);
             connectionTargetNodeIdRef.current = null;
             setConnectionTargetNodeId(null);
@@ -502,7 +515,8 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
     const panelNode = dialogNodeId ? nodeById.get(dialogNodeId) : undefined;
     const fullscreenNode = panelNode && getNodeDefinition(panelNode.type)?.panelPresentation === "fullscreen" ? panelNode : null;
     const inlinePanel = !fullscreenNode && !isNodeResizing && !selectionBox && panelNode && panelNode.type !== CanvasNodeType.Group && !getNodeDefinition(panelNode.type)?.hidePanel ? panelNode : null;
-    const dockedPanel = size.width < 640 ? inlinePanel : null;
+    const compactPanel = viewport.k < CANVAS_NODE_DETAIL_SCALE ? inlinePanel : null;
+    const dockedPanel = !compactPanel && size.width < 640 ? inlinePanel : null;
     const infoNode = nodeInfo ? nodeById.get(nodeInfo.nodeId) || null : null;
     const hasMultipleSelectedNodes = selectedNodeIds.size > 1;
     const selectedNodes = useMemo(() => nodes.filter((node) => selectedNodeIds.has(node.id)), [nodes, selectedNodeIds]);
@@ -734,13 +748,22 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
         [selectNodeByEvent],
     );
 
-    const handleNodeMouseDown = useCallback((event: ReactMouseEvent, nodeId: string) => {
+    const handleNodeDragStart = useCallback((event: ReactMouseEvent | ReactPointerEvent, nodeId: string, pointerId?: number) => {
         event.stopPropagation();
-        if (event.button !== 0 || selectionPointer.current || connectionPointerId.current !== null) return;
+        if (event.button !== 0 || dragRef.current.isDraggingNode || previewRef.current || selectionPointer.current || connectionGesture.current) return;
+        if (pointerId !== undefined) {
+            event.preventDefault();
+            if (event.target instanceof Element) event.target.setPointerCapture(pointerId);
+            setContextMenu(null);
+            setHoveredNodeId(null);
+            setSelectedConnectionId(null);
+        }
         // Capture already selected the node; this only starts dragging, with a fallback selection if capture did not run.
         const currentNodes = nodesRef.current;
-        const nextSelected = pendingSelectionRef.current ?? selectNodeByEvent(event, nodeId).nextSelected;
+        const capturedSelection = pointerId === undefined ? pendingSelectionRef.current : null;
         pendingSelectionRef.current = null;
+        const nextSelected = capturedSelection ?? selectNodeByEvent(event, nodeId).nextSelected;
+        if (!nextSelected.has(nodeId)) return;
         const dragIds = new Set(nextSelected);
         currentNodes.forEach((node) => {
             if (!nextSelected.has(node.id)) return;
@@ -753,6 +776,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
         const initialSelectedNodes = new Map(currentNodes.filter((node) => dragIds.has(node.id)).map((node): [string, { x: number; y: number }] => [node.id, { x: node.position.x, y: node.position.y }]));
         dragRef.current = {
             isDraggingNode: true,
+            pointerId: pointerId ?? null,
             hasMoved: false,
             startX: event.clientX,
             startY: event.clientY,
@@ -762,7 +786,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
         previewRef.current = session.beginPreview();
         nodeDraggingRef.current = true;
         setIsNodeDragging(true);
-    }, []);
+    }, [selectNodeByEvent, session, setSelectedConnectionId]);
 
     const finishNodeDrag = useCallback((clientX?: number, clientY?: number) => {
         if (rafRef.current) {
@@ -771,7 +795,8 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
         }
         if (!dragRef.current.isDraggingNode) return;
 
-        const wasClick = !dragRef.current.hasMoved && dragRef.current.initialSelectedNodes.size === 1;
+        const moved = dragRef.current.hasMoved || (clientX != null && clientY != null && hasDragged(dragRef.current.startX, dragRef.current.startY, clientX, clientY));
+        const wasClick = !moved && dragRef.current.initialSelectedNodes.size === 1;
         const clickedNodeId = dragRef.current.initialSelectedNodes.keys().next().value;
         const currentViewport = viewportRef.current;
         const dx = clientX == null ? 0 : (clientX - dragRef.current.startX) / currentViewport.k;
@@ -782,7 +807,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
         nodeDraggingRef.current = false;
         setIsNodeDragging(false);
         setDropTargetGroupId(null);
-        if (dragRef.current.hasMoved && clientX != null && clientY != null) {
+        if (moved && clientX != null && clientY != null) {
             try {
                 previewRef.current!.update((document) => {
                     const moved = document.nodes.map((node) => {
@@ -807,6 +832,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
         previewRef.current = null;
 
         dragRef.current.isDraggingNode = false;
+        dragRef.current.pointerId = null;
         dragRef.current.hasMoved = false;
         dragRef.current.initialSelectedNodes = new Map();
         dragRef.current.movedIds = new Set();
@@ -826,45 +852,75 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
         }
     }, [focusNode]);
 
-    const handleGlobalMouseMove = useCallback(
-        (event: MouseEvent) => {
-            const currentViewport = viewportRef.current;
+    const moveNodeDrag = useCallback((event: MouseEvent) => {
+        const drag = dragRef.current;
+        if (!drag.isDraggingNode || (!drag.hasMoved && !hasDragged(drag.startX, drag.startY, event.clientX, event.clientY))) return;
+        drag.hasMoved = true;
+        const scale = viewportRef.current.k;
+        const dx = (event.clientX - drag.startX) / scale;
+        const dy = (event.clientY - drag.startY) / scale;
+        const moveNode = (node: CanvasNodeData) => {
+            const initial = drag.initialSelectedNodes.get(node.id);
+            return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
+        };
+        // 预览和分组命中共享位移，每帧最多更新一次。
+        if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = null;
+            try {
+                const nodes = nodesRef.current.map(moveNode);
+                previewRef.current!.update((document) => ({ ...document, nodes }));
+                setDropTargetGroupId(findGroupDropTarget(drag.movedIds, nodes)?.id || null);
+            } catch (error) { console.error("[canvas] drag cancelled", error); }
+        });
+    }, []);
 
-            if (dragRef.current.isDraggingNode) {
-                const dx = (event.clientX - dragRef.current.startX) / currentViewport.k;
-                const dy = (event.clientY - dragRef.current.startY) / currentViewport.k;
-                const initialPositions = dragRef.current.initialSelectedNodes;
-                const movedIds = dragRef.current.movedIds;
-                if (Math.abs(event.clientX - dragRef.current.startX) > 3 || Math.abs(event.clientY - dragRef.current.startY) > 3) {
-                    dragRef.current.hasMoved = true;
-                }
+    const startConnectionDrag = useCallback((gesture: ConnectionGesture) => {
+        gesture.dragging = true;
+        setPendingConnectionCreate(null);
+        setPortSelectionActive(false);
+        setMouseWorld(screenToCanvas(gesture.start.x, gesture.start.y));
+        setConnecting(gesture.handle);
+        connectionTargetNodeIdRef.current = null;
+        setConnectionTargetNodeId(null);
+        setSelectedConnectionId(null);
+    }, [screenToCanvas, setConnecting, setSelectedConnectionId]);
 
-                // Drop-target detection and node updates both run once per frame; mousemove can fire far more often than the display refreshes.
-                if (rafRef.current) cancelAnimationFrame(rafRef.current);
-                rafRef.current = requestAnimationFrame(() => {
-                    const previewNodes = nodesRef.current.map((node) => {
-                        const initial = initialPositions.get(node.id);
-                        return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
-                    });
-                    setDropTargetGroupId(findGroupDropTarget(movedIds, previewNodes)?.id || null);
-                    try { previewRef.current!.update((document) => ({ ...document, nodes:
-                        document.nodes.map((node) => {
-                            const initial = initialPositions.get(node.id);
-                            return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
-                        }),
-                    })); } catch (error) { console.error("[canvas] drag cancelled", error); }
-                    rafRef.current = null;
-                });
-            }
-        },
-        [],
-    );
+    const selectPort = useCallback((nodeId: string, handleType: "source" | "target") => {
+        if (selectionPointer.current || connectionGesture.current || nodeDraggingRef.current) return;
+        const current = connectingParamsRef.current;
+        if (handleType === "target") {
+            if (!current || current.handleType !== "source" || !normalizeConnection(current.nodeId, nodeId, nodesRef.current, current.handleType)) return;
+            connectNodes(current, nodeId);
+            setConnecting(null);
+            return;
+        }
+        if (current?.nodeId === nodeId && !pendingConnectionCreateRef.current) {
+            setConnecting(null);
+            return;
+        }
+        const node = nodesRef.current.find((item) => item.id === nodeId);
+        if (!node) return;
+        setPendingConnectionCreate(null);
+        setMouseWorld({ x: node.position.x + node.width, y: node.position.y + node.height / 2 });
+        setConnecting({ nodeId, handleType });
+        setPortSelectionActive(true);
+        setSelectedConnectionId(null);
+    }, [connectNodes, setConnecting, setSelectedConnectionId]);
 
     const handleGlobalPointerMove = useCallback(
         (event: PointerEvent) => {
-            const connection = connectingParamsRef.current;
-            if (connection && connectionPointerId.current === event.pointerId) {
-                const dropTarget = getConnectionDropTarget(event.clientX, event.clientY, connection);
+            if (dragRef.current.pointerId === event.pointerId) {
+                moveNodeDrag(event);
+                return;
+            }
+            const gesture = connectionGesture.current;
+            if (gesture?.id === event.pointerId) {
+                if (!gesture.dragging) {
+                    if (!hasDragged(gesture.start.x, gesture.start.y, event.clientX, event.clientY)) return;
+                    startConnectionDrag(gesture);
+                }
+                const dropTarget = getConnectionDropTarget(event.clientX, event.clientY, gesture.handle);
                 connectionTargetNodeIdRef.current = dropTarget.nodeId;
                 setConnectionTargetNodeId(dropTarget.nodeId);
                 setMouseWorld(screenToCanvas(event.clientX, event.clientY));
@@ -892,46 +948,57 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
             setSelectionBox(nextSelectionBox);
             setSelectedNodeIds(nextSelected);
         },
-        [getConnectionDropTarget, screenToCanvas],
+        [getConnectionDropTarget, moveNodeDrag, screenToCanvas, startConnectionDrag],
     );
 
     const handleGlobalPointerUp = useCallback(
         (event: PointerEvent) => {
-            if (event.pointerType === "mouse") finishNodeDrag(event.clientX, event.clientY);
+            if (dragRef.current.pointerId === event.pointerId || (dragRef.current.pointerId === null && event.pointerType === "mouse")) finishNodeDrag(event.clientX, event.clientY);
             if (selectionPointer.current?.id === event.pointerId && event.pointerType !== "mouse") handleGlobalPointerMove(event);
             finishSelection(event.pointerId, false);
-            if (connectionPointerId.current !== event.pointerId) return;
-            connectionPointerId.current = null;
+            const gesture = connectionGesture.current;
+            if (gesture?.id !== event.pointerId) return;
+            connectionGesture.current = null;
 
-            const currentConnection = connectingParamsRef.current;
-            if (currentConnection) {
-                const dropTarget = getConnectionDropTarget(event.clientX, event.clientY, currentConnection);
-                if (dropTarget.nodeId) {
-                    connectNodes(currentConnection, dropTarget.nodeId);
-                    setConnecting(null);
-                } else if (dropTarget.isNearNode) {
-                    setConnecting(null);
-                } else {
-                    setMouseWorld(screenToCanvas(event.clientX, event.clientY));
-                    setPendingConnectionCreate({ connection: currentConnection, position: screenToCanvas(event.clientX, event.clientY) });
-                }
+            if (!gesture.dragging && !hasDragged(gesture.start.x, gesture.start.y, event.clientX, event.clientY)) {
+                selectPort(gesture.handle.nodeId, gesture.handle.handleType);
+                return;
+            }
+            const target = document.elementFromPoint(event.clientX, event.clientY);
+            if (!target || !containerRef.current?.contains(target) || target.closest("[data-node-panel],[role='dialog'],[role='menu']")) {
+                setConnecting(null);
+                return;
+            }
+            const dropTarget = getConnectionDropTarget(event.clientX, event.clientY, gesture.handle);
+            if (dropTarget.nodeId) {
+                connectNodes(gesture.handle, dropTarget.nodeId);
+                setConnecting(null);
+            } else if (dropTarget.isNearNode) {
+                setConnecting(null);
+            } else {
+                const position = screenToCanvas(event.clientX, event.clientY);
+                if (!gesture.dragging) startConnectionDrag(gesture);
+                setMouseWorld(position);
+                setPendingConnectionCreate({ connection: gesture.handle, position });
             }
         },
-        [connectNodes, finishNodeDrag, finishSelection, getConnectionDropTarget, handleGlobalPointerMove, screenToCanvas, setConnecting],
+        [connectNodes, finishNodeDrag, finishSelection, getConnectionDropTarget, handleGlobalPointerMove, screenToCanvas, selectPort, setConnecting, startConnectionDrag],
     );
 
     useEffect(() => {
-        const finishCompatibilityDrag = (event: MouseEvent) => finishNodeDrag(event.clientX, event.clientY);
+        const handleGlobalMouseMove = (event: MouseEvent) => { if (dragRef.current.pointerId === null) moveNodeDrag(event); };
+        const finishCompatibilityDrag = (event: MouseEvent) => { if (dragRef.current.pointerId === null) finishNodeDrag(event.clientX, event.clientY); };
         const cancelInteraction = (event: Event) => {
             const id = event instanceof PointerEvent ? event.pointerId : undefined;
-            if (!(event instanceof PointerEvent) || event.pointerType === "mouse") finishNodeDrag();
+            if (id === undefined || dragRef.current.pointerId === id || (dragRef.current.pointerId === null && event instanceof PointerEvent && event.pointerType === "mouse")) finishNodeDrag();
             finishSelection(id, true);
-            if (id === undefined || id === connectionPointerId.current) setConnecting(null);
+            if (id === undefined || id === connectionGesture.current?.id) setConnecting(null);
         };
         window.addEventListener("mousemove", handleGlobalMouseMove);
         window.addEventListener("mouseup", finishCompatibilityDrag);
         window.addEventListener("pointerup", handleGlobalPointerUp);
         window.addEventListener("pointercancel", cancelInteraction);
+        window.addEventListener("lostpointercapture", cancelInteraction);
         window.addEventListener("blur", cancelInteraction);
         window.addEventListener("pointermove", handleGlobalPointerMove);
         return () => {
@@ -939,10 +1006,11 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
             window.removeEventListener("mouseup", finishCompatibilityDrag);
             window.removeEventListener("pointerup", handleGlobalPointerUp);
             window.removeEventListener("pointercancel", cancelInteraction);
+            window.removeEventListener("lostpointercapture", cancelInteraction);
             window.removeEventListener("blur", cancelInteraction);
             window.removeEventListener("pointermove", handleGlobalPointerMove);
         };
-    }, [finishNodeDrag, finishSelection, handleGlobalMouseMove, handleGlobalPointerMove, handleGlobalPointerUp, setConnecting]);
+    }, [finishNodeDrag, finishSelection, handleGlobalPointerMove, handleGlobalPointerUp, moveNodeDrag, setConnecting]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -1034,43 +1102,27 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
     const handleConnectStart = useCallback(
         (event: ReactPointerEvent, nodeId: string, handleType: "source" | "target") => {
             event.stopPropagation();
-            if (event.pointerType === "touch" || event.button !== 0 || selectionPointer.current || nodeDraggingRef.current) return;
+            if (!event.isPrimary || event.button !== 0 || selectionPointer.current || previewRef.current || connectionGesture.current) return;
+            const touch = event.pointerType === "touch";
+            if (touch && isCanvasTouchEdge(event.clientX)) return;
             event.preventDefault();
             event.currentTarget.setPointerCapture(event.pointerId);
-            connectionPointerId.current = event.pointerId;
-            setPendingConnectionCreate(null);
-            setPortSelectionActive(false);
-            setMouseWorld(screenToCanvas(event.clientX, event.clientY));
-            setConnecting({ nodeId, handleType });
-            connectionTargetNodeIdRef.current = null;
-            setConnectionTargetNodeId(null);
-            setSelectedConnectionId(null);
+            const gesture: ConnectionGesture = {
+                id: event.pointerId,
+                handle: { nodeId, handleType },
+                start: { x: event.clientX, y: event.clientY },
+                dragging: false,
+            };
+            connectionGesture.current = gesture;
+            if (!touch) startConnectionDrag(gesture);
         },
-        [screenToCanvas, setConnecting],
+        [startConnectionDrag],
     );
 
     const handlePortTap = useCallback((event: ReactMouseEvent, nodeId: string, handleType: "source" | "target") => {
         event.stopPropagation();
-        if (selectionPointer.current || connectionPointerId.current !== null || nodeDraggingRef.current) return;
-        const current = connectingParamsRef.current;
-        if (handleType === "target") {
-            if (!current || current.handleType !== "source" || !normalizeConnection(current.nodeId, nodeId, nodesRef.current, current.handleType)) return;
-            connectNodes(current, nodeId);
-            setConnecting(null);
-            return;
-        }
-        if (current?.nodeId === nodeId && !pendingConnectionCreateRef.current) {
-            setConnecting(null);
-            return;
-        }
-        setPendingConnectionCreate(null);
-        const node = nodesRef.current.find((item) => item.id === nodeId);
-        if (!node) return;
-        setMouseWorld({ x: node.position.x + node.width, y: node.position.y + node.height / 2 });
-        setConnecting({ nodeId, handleType });
-        setPortSelectionActive(true);
-        setSelectedConnectionId(null);
-    }, [connectNodes, setConnecting]);
+        selectPort(nodeId, handleType);
+    }, [selectPort]);
 
     const handleExtendNode = useCallback((event: ReactMouseEvent, node: CanvasNodeData) => {
         event.stopPropagation();
@@ -1151,6 +1203,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
     const handleNodeContextMenu = useCallback((event: ReactMouseEvent, nodeId: string) => {
         event.preventDefault();
         event.stopPropagation();
+        if (dragRef.current.pointerId !== null || connectionGesture.current) return;
         setSelectedNodeIds((current) => (current.has(nodeId) ? current : new Set([nodeId])));
         setSelectedConnectionId(null);
         setContextMenu({ type: "node", x: event.clientX, y: event.clientY, nodeId });
@@ -1219,12 +1272,12 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
                             canCompletePort={Boolean(connectedPortTargets && node.id !== connectingParams?.nodeId && !connectedPortTargets.has(node.id))}
                             onExtend={node.id === singleSelectedNodeId ? handleExtendNode : undefined}
                             referenceSelectionState={!referenceConnectedNodeIds ? undefined : node.id === referencePickerNodeId ? "target" : referenceConnectedNodeIds.has(node.id) || !isCanvasReferenceNode(node, nodes) ? "disabled" : "available"}
-                            showPanel={!dockedPanel && inlinePanel?.id === node.id}
+                            showPanel={!dockedPanel && !compactPanel && inlinePanel?.id === node.id}
                             isGroupDropTarget={dropTargetGroupId === node.id}
                             pluginHost={pluginHost}
                             registryVersion={nodeRegistryVersion}
                             renderPanel={dialogNodeId === node.id ? renderPluginPanel : undefined}
-                            onMouseDown={handleNodeMouseDown}
+                            onDragStart={handleNodeDragStart}
                             onSelectCapture={handleNodeSelectCapture}
                             onHoverStart={handleNodeHoverStart}
                             onHoverEnd={handleNodeHoverEnd}
@@ -1283,6 +1336,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
                 ) : null}
 
                 {fullscreenNode && renderPluginPanel(fullscreenNode)}
+                {compactPanel ? <CompactInputPanel key={compactPanel.id} node={compactPanel} renderPanel={renderPluginPanel} /> : null}
                 {dockedPanel ? (
                     <div className="thin-scrollbar absolute inset-x-3 bottom-32 z-[71] mx-auto max-h-[45dvh] max-w-[600px] overflow-y-auto overscroll-contain" data-canvas-no-zoom data-canvas-docked-panel={dockedPanel.id}>
                         {renderPluginPanel(dockedPanel)}
@@ -1334,5 +1388,24 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
                 <AssetPickerModal parentSignal={commandOptions.scope.signal} open={assetPickerOpen} onInsert={handleAssetInsert} onClose={() => setAssetPickerOpen(false)} />
             </section>
         </main>
+    );
+}
+
+function CompactInputPanel({ node, renderPanel }: { node: CanvasNodeData; renderPanel: (node: CanvasNodeData) => React.ReactNode }) {
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const [expanded, setExpanded] = useState(false);
+    const Icon = expanded ? ChevronDown : ChevronUp;
+    return (
+        <div className="pointer-events-none absolute inset-x-3 bottom-32 z-[71] mx-auto flex max-w-[600px] flex-col items-center gap-2">
+            {expanded ? (
+                <div className="thin-scrollbar pointer-events-auto max-h-[45dvh] w-full overflow-y-auto overscroll-contain" data-canvas-no-zoom data-canvas-docked-panel={node.id}>
+                    {renderPanel(node)}
+                </div>
+            ) : null}
+            <button type="button" aria-expanded={expanded} className="pointer-events-auto inline-flex h-11 items-center gap-2 rounded-lg border px-3 text-sm" style={{ color: theme.node.text, background: theme.toolbar.panel, borderColor: theme.toolbar.border }} onClick={() => setExpanded(!expanded)}>
+                <Icon className="size-4" aria-hidden="true" />
+                {expanded ? "收起输入面板" : "展开输入面板"}
+            </button>
+        </div>
     );
 }

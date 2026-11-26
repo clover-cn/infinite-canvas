@@ -63,7 +63,7 @@ export function TextContent({ ctx }: CanvasNodeContentProps) {
                 style={textStyle} value={content} references={references} highlightLabels={false} onChange={update}
                 onBlur={() => setEditing(false)} onKeyDown={(event) => { if (event.key === "Escape") setEditing(false); }}
                 onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}
-            /> : content ? <div className={`thin-scrollbar block h-full w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent font-mono ${padding}`} style={textStyle} onWheel={(event) => event.stopPropagation()}>{content}</div>
+            /> : content ? <div data-canvas-no-zoom className={`thin-scrollbar block h-full w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent font-mono ${padding}`} style={textStyle} onWheel={(event) => event.stopPropagation()}>{content}</div>
                 : primary ? <TextSlotStatus ctx={ctx} text={primary} /> : <div className="p-4 font-mono" style={{ color: theme.node.placeholder }}>双击编辑文字</div>}
         </div>
         {texts.length > 1 ? <button

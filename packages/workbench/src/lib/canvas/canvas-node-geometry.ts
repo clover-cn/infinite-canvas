@@ -1,6 +1,8 @@
 import { CanvasNodeType, type CanvasNodeData } from "@infinite-canvas/shared/canvas/schema/canvas";
 import { type ConnectionHandle, type ViewportTransform } from "@workbench/types/canvas";
 
+export const CANVAS_NODE_DETAIL_SCALE = 0.45;
+
 export function getConnectionTargetAnchor(node: CanvasNodeData, current: ConnectionHandle) {
     return {
         x: current.handleType === "source" ? node.position.x : node.position.x + node.width,

@@ -12,7 +12,8 @@ import { canvasThemes } from "@workbench/lib/canvas-theme";
 import { getNodeDefinition, getNodePluginId, readNodeResource, useNodeRegistryVersion } from "@workbench/lib/canvas/node-registry";
 import { buildNodeContext } from "@workbench/lib/canvas/plugin-node-context";
 import { useThemeStore } from "@workbench/stores/use-theme-store";
-import { CANVAS_TOUCH_EDGE } from "./use-canvas-touch";
+import { CANVAS_NODE_DETAIL_SCALE } from "@workbench/lib/canvas/canvas-node-geometry";
+import { isCanvasTouchEdge } from "./use-canvas-touch";
 import { getImagePreviewRevision, loadImagePreview, previewUrlFor, subscribeImagePreviews } from "@workbench/services/image-storage";
 import { CanvasNodeType, type CanvasNodeData, type Position } from "@infinite-canvas/shared/canvas/schema/canvas";
 import type { CanvasNodeAppearance, CanvasNodeContext, CanvasPluginHost } from "@infinite-canvas/plugin-sdk";
@@ -37,7 +38,7 @@ type CanvasNodeProps = {
     registryVersion?: number;
     renderPanel?: (node: CanvasNodeData) => ReactNode;
     isGroupDropTarget?: boolean;
-    onMouseDown: (event: React.MouseEvent, nodeId: string) => void;
+    onDragStart: (event: React.MouseEvent | React.PointerEvent, nodeId: string, pointerId?: number) => void;
     onSelectCapture?: (event: React.MouseEvent, nodeId: string) => void;
     onHoverStart: (nodeId: string) => void;
     onHoverEnd: (nodeId: string) => void;
@@ -74,7 +75,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     pluginHost,
     renderPanel,
     isGroupDropTarget = false,
-    onMouseDown,
+    onDragStart,
     onSelectCapture,
     onHoverStart,
     onHoverEnd,
@@ -97,7 +98,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     const [titleDraft, setTitleDraft] = useState(data.title || "");
     const isGroup = data.type === CanvasNodeType.Group;
     const canStartConnection = definition?.hasSourceHandle ?? true;
-    const compact = scale < 0.45 && (data.type === CanvasNodeType.Text || data.type === CanvasNodeType.Video);
+    const compact = scale < CANVAS_NODE_DETAIL_SCALE && (data.type === CanvasNodeType.Text || data.type === CanvasNodeType.Video);
     // Nodes with the interaction/move toggle ignore content pointer events in move mode and allow interaction in interactive mode.
     // forceInteractive states such as editing stay interactive, as do empty nodes so their upload and generation actions remain usable.
     const supportsInteractionToggle = Boolean(definition?.interactionToggle);
@@ -298,15 +299,21 @@ export const CanvasNode = React.memo(function CanvasNode({
             )}
 
             <div
-                className="relative h-full w-full overflow-visible rounded-3xl border-2"
+                className="relative h-full w-full overflow-visible rounded-3xl border-2 touch-none"
                 style={{
                     background,
                     borderColor: isGroup ? (isGroupDropTarget || isActive ? selectionColor : theme.node.stroke) : isActive ? selectionColor : isRelated ? theme.node.muted : appearance.border === "none" ? "transparent" : theme.node.stroke,
                     borderStyle: isGroup ? "dashed" : "solid",
                     boxShadow: isGroupDropTarget ? `0 0 0 2px color-mix(in srgb, ${selectionColor} 40%, transparent), inset 0 0 0 999px color-mix(in srgb, ${selectionColor} 6%, transparent)` : isActive ? `0 0 0 1px color-mix(in srgb, ${selectionColor} 33%, transparent)` : isRelated ? `0 0 0 1px color-mix(in srgb, ${theme.node.muted} 33%, transparent), 0 18px 48px rgba(0,0,0,.14)` : undefined,
                 }}
+                onPointerDown={(event) => {
+                    if (referenceSelectionState || event.pointerType === "mouse" || !event.isPrimary) return;
+                    if (!(event.target instanceof Element) || event.target.closest("button,a,input,textarea,select,[contenteditable],[role='button'],[data-canvas-no-zoom]")) return;
+                    if (event.pointerType === "touch" && isCanvasTouchEdge(event.clientX)) return;
+                    onDragStart(event, data.id, event.pointerId);
+                }}
                 onMouseDown={(event) => {
-                    if (!referenceSelectionState) onMouseDown(event, data.id);
+                    if (!referenceSelectionState) onDragStart(event, data.id);
                     else if (event.button === 0 && referenceSelectionState === "available") {
                         event.stopPropagation();
                         onSelectReference?.(data.id);
@@ -346,6 +353,11 @@ export const CanvasNode = React.memo(function CanvasNode({
                 {supportsInteractionToggle && hasResource && !forceInteractive && contentInteractive ? (
                     // 交互模式下内容会接管鼠标，顶部留一条抓取条，保证仍能选中、拖动节点并呼出工具条。
                     <div aria-hidden="true" className="absolute inset-x-0 top-0 z-[55] flex h-5 cursor-move items-center justify-center rounded-t-[inherit] opacity-0 transition-opacity duration-150 group-hover/node:opacity-100" style={{ background: `linear-gradient(to bottom, color-mix(in srgb, ${theme.canvas.background} 70%, transparent), transparent)`, color: theme.node.muted }}>
+                        <GripHorizontal className="size-4" />
+                    </div>
+                ) : null}
+                {!compact && data.type === CanvasNodeType.Text && isSelected && !referenceSelectionState ? (
+                    <div aria-hidden="true" className="absolute inset-x-4 top-0 z-[55] hidden h-6 cursor-move items-center justify-center [@media(any-pointer:coarse)]:flex" style={{ color: theme.node.muted }}>
                         <GripHorizontal className="size-4" />
                     </div>
                 ) : null}
@@ -454,7 +466,6 @@ function ConnectionHandleDot({ side, scale, visible, highlighted, onPointerDown,
     onClick: (event: React.MouseEvent) => void;
 }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const pressedWithTouch = useRef(false);
 
     return (
         <button
@@ -467,15 +478,11 @@ function ConnectionHandleDot({ side, scale, visible, highlighted, onPointerDown,
                 side === "left" ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2"
             } ${visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
             style={{ "--canvas-port-size": `${44 / scale}px` } as React.CSSProperties}
-            onPointerDown={(event) => {
-                pressedWithTouch.current = event.pointerType === "touch" && event.clientX >= CANVAS_TOUCH_EDGE && event.clientX < window.innerWidth - CANVAS_TOUCH_EDGE;
-                onPointerDown(event);
-            }}
-            onPointerCancel={() => { pressedWithTouch.current = false; }}
+            onPointerDown={onPointerDown}
             onMouseDown={(event) => event.stopPropagation()}
+            onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
             onClick={(event) => {
-                if (pressedWithTouch.current || event.detail === 0) onClick(event);
-                pressedWithTouch.current = false;
+                if (event.detail === 0) onClick(event);
             }}
         >
             <span className="size-3 rounded-full border-2 transition-all hover:scale-125 [@media(any-pointer:coarse)]:size-[var(--canvas-port-dot)]" style={{ "--canvas-port-dot": `${(highlighted ? 14 : 10) / scale}px`, background: highlighted ? theme.node.activeStroke : theme.node.panel, borderColor: highlighted ? theme.node.activeStroke : theme.node.muted } as React.CSSProperties} />
