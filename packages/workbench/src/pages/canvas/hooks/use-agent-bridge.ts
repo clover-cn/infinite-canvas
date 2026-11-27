@@ -23,9 +23,11 @@ export function useAgentBridge({ session, title, setContextMenu }: AgentBridgePa
         return snapshot;
     }, [session, setContextMenu, title]);
     useLayoutEffect(() => {
+        if (import.meta.env.MODE === "mobile-preview") return;
         if (!session.signal.aborted) setAgentCanvasContext({ signal: session.signal, snapshot: agentSnapshot, applyOps: applyAgentOps });
     }, [agentSnapshot, applyAgentOps, session, setAgentCanvasContext]);
     useLayoutEffect(() => {
+        if (import.meta.env.MODE === "mobile-preview") return;
         const close = () => {
             if (useAgentStore.getState().canvasContext?.signal === session.signal) setAgentCanvasContext(null);
         };

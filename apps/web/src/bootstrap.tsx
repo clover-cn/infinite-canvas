@@ -11,12 +11,14 @@ import { router } from "./router";
 import { NavigationContext } from "@infinite-canvas/workbench/constant/navigation-tools";
 import { navigationTools } from "./navigation";
 
-initAnalytics();
+const mobilePreview = import.meta.env.MODE === "mobile-preview";
+if (!mobilePreview) initAnalytics();
+const tools = mobilePreview ? navigationTools.filter(({ slug }) => slug === "canvas" || slug === "assets") : navigationTools;
 document.body.style.fontFamily = '"SF Pro Display","SF Pro Text","PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif';
 
 createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
-        <NavigationContext.Provider value={navigationTools}>
+        <NavigationContext.Provider value={tools}>
             <AppProviders>
                 <RouterProvider router={router} />
             </AppProviders>

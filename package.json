@@ -13,6 +13,7 @@
     "lint:boundaries": "eslint packages/shared/src",
     "dev:web": "pnpm --filter @infinite-canvas/web dev",
     "build:web": "pnpm --filter @infinite-canvas/web build",
+    "build:mobile:web": "pnpm --filter @infinite-canvas/web exec vite build --mode mobile-preview --base / --outDir dist-mobile && node apps/mobile/prepare-harmony.mjs",
     "dev:desktop": "pnpm --filter @infinite-canvas/desktop dev",
     "build:desktop": "pnpm --filter @infinite-canvas/desktop build"
   },

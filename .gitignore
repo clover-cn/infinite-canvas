@@ -10,6 +10,15 @@ data/
 .DS_Store
 .idea
 apps/web/dist
+apps/web/dist-mobile/
+apps/mobile/android/.gradle/
+apps/mobile/android/**/build/
+apps/mobile/android/local.properties
+apps/mobile/harmony/.hvigor/
+apps/mobile/harmony/**/build/
+apps/mobile/harmony/**/oh_modules/
+apps/mobile/harmony/local.properties
+apps/mobile/harmony/entry/src/main/resources/rawfile/workbench/
 
 **/dist
 packages/workbench/public/plugins

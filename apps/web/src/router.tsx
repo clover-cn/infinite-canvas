@@ -1,5 +1,5 @@
 import { PluginPageView } from "@infinite-canvas/workbench/components/plugins/plugin-contributions";
-import { createBrowserRouter, Outlet } from "react-router-dom";
+import { createBrowserRouter, createHashRouter, Navigate, Outlet } from "react-router-dom";
 
 import { AnalyticsTracker } from "@/components/layout/analytics-tracker";
 import UserLayout from "@infinite-canvas/workbench/layouts/user-layout";
@@ -12,21 +12,26 @@ import HomePage from "@infinite-canvas/workbench/pages/home";
 import NotFound from "@infinite-canvas/workbench/pages/not-found";
 import PromptsPage from "@infinite-canvas/workbench/pages/prompts";
 
-export const router = createBrowserRouter([
+const mobilePreview = import.meta.env.MODE === "mobile-preview";
+const createRouter = mobilePreview ? createHashRouter : createBrowserRouter;
+
+export const router = createRouter([
     {
         element: (
             <UserLayout>
-                <AnalyticsTracker />
+                {!mobilePreview && <AnalyticsTracker />}
                 <Outlet />
             </UserLayout>
         ),
         children: [
-            { path: "/extensions/:pageId", element: <PluginPageView /> },
-            { path: "/", element: <HomePage /> },
-            { path: "/create/history", element: <CreateHistoryPage /> },
-            { path: "/create", element: <CreatePage /> },
+            { path: "/", element: mobilePreview ? <Navigate replace to="/canvas" /> : <HomePage /> },
+            ...(!mobilePreview ? [
+                { path: "/extensions/:pageId", element: <PluginPageView /> },
+                { path: "/create/history", element: <CreateHistoryPage /> },
+                { path: "/create", element: <CreatePage /> },
+                { path: "/prompts", element: <PromptsPage /> },
+            ] : []),
             { path: "/assets", element: <AssetsPage /> },
-            { path: "/prompts", element: <PromptsPage /> },
             { path: "/canvas", element: <CanvasPage /> },
             { path: "/canvas/:id", element: <CanvasProjectPage /> },
             { path: "*", element: <NotFound /> },

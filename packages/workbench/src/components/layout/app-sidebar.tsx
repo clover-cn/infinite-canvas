@@ -19,6 +19,7 @@ const SIDEBAR_MOTION_SECONDS = SIDEBAR_MOTION_MS / 1000;
 const SIDEBAR_EASE = [0.22, 1, 0.36, 1] as const;
 
 export function AppSidebar({ items, brand, collapsed = false, onToggle }: Pick<PluginLayoutProps, "items" | "brand"> & { collapsed?: boolean; onToggle: () => void }) {
+    const showCreateHistory = import.meta.env.MODE !== "mobile-preview";
     const { search } = useLocation();
     const sessions = useCreateSessionStore((state) => state.sessions);
     const hydrated = useCreateSessionStore((state) => state.hydrated);
@@ -35,7 +36,7 @@ export function AppSidebar({ items, brand, collapsed = false, onToggle }: Pick<P
     // 收起时先让宽度动画走完再切换成图标布局，避免文字和图标提前跳位。
     const [folded, setFolded] = useState(collapsed);
 
-    useEffect(() => { void useCreateSessionStore.getState().load(); }, []);
+    useEffect(() => { if (showCreateHistory) void useCreateSessionStore.getState().load(); }, [showCreateHistory]);
     useEffect(() => {
         if (!collapsed) {
             setFolded(false);
@@ -101,7 +102,7 @@ export function AppSidebar({ items, brand, collapsed = false, onToggle }: Pick<P
         </nav>
         <div className={cn("thin-scrollbar mt-1 min-h-0 w-[220px] flex-1 overflow-y-auto px-2 pb-3 transition-opacity", collapsed ? "invisible pointer-events-none opacity-0" : "visible opacity-100 duration-150 delay-100")}
             inert={collapsed} aria-hidden={collapsed || undefined}>
-            <Section title="创作对话" allTo="/create/history" createTo="/create" createLabel="进入创作">
+            {showCreateHistory && <Section title="创作对话" allTo="/create/history" createTo="/create" createLabel="进入创作">
                 {!hydrated ? <Empty>加载中…</Empty> : sessions.length ? sessions.slice(0, RECENT_LIMIT).map((session) => <div key={session.id} className="group relative">
                     <Link to={`/create?session=${encodeURIComponent(session.id)}`}
                         className={cn("flex h-8 items-center gap-2 rounded-md px-2 pr-7 text-sm text-muted-foreground transition hover:bg-foreground/[0.045] hover:text-foreground",
@@ -125,7 +126,7 @@ export function AppSidebar({ items, brand, collapsed = false, onToggle }: Pick<P
                         </DropdownMenu.Portal>
                     </DropdownMenu.Root>
                 </div>) : <Empty>暂无对话</Empty>}
-            </Section>
+            </Section>}
             <Section title="画布历史" allTo="/canvas" createTo="/canvas?mode=new" createLabel="新建画布">
                 {!projectsHydrated ? <Empty>加载中…</Empty> : projects.length ? projects.slice(0, RECENT_LIMIT).map((project) => <Link key={project.id} to={`/canvas/${encodeURIComponent(project.id)}`}
                     className="flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition hover:bg-foreground/[0.045] hover:text-foreground">
