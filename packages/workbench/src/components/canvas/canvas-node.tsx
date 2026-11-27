@@ -20,6 +20,7 @@ import type { CanvasNodeAppearance, CanvasNodeContext, CanvasPluginHost } from "
 
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 const selectionColor = "var(--canvas-node-activeStroke, #2f80ff)";
+const touchPortSize = 44;
 
 type CanvasNodeProps = {
     data: CanvasNodeData;
@@ -316,9 +317,9 @@ export const CanvasNode = React.memo(function CanvasNode({
                         }
                         return;
                     }
-                }}
                     if (!(event.target instanceof Element) || event.target.closest("button,a,input,textarea,select,[contenteditable],[role='button'],[data-canvas-no-zoom]")) return;
                     onDragStart(event, data.id);
+                }}
                 onDoubleClickCapture={(event) => { if (referenceSelectionState) event.stopPropagation(); }}
                 onDoubleClick={(event) => {
                     if (referenceSelectionState) {
@@ -376,20 +377,23 @@ export const CanvasNode = React.memo(function CanvasNode({
                 {!referenceSelectionState ? <ResizeHandle corner="bottom-right" onMouseDown={handleResizeMouseDown} /> : null}
             </div>
 
-            {!referenceSelectionState && !isGroup ? <ConnectionHandleDot side="left" scale={scale} visible={portSelectionActive ? canCompletePort : hovered || isSelected || isConnecting} highlighted={canCompletePort} onPointerDown={(event) => onConnectStart(event, data.id, "target")} onClick={(event) => onPortTap(event, data.id, "target")} /> : null}
-            {!referenceSelectionState && canStartConnection ? <ConnectionHandleDot side="right" scale={scale} visible={hovered || isSelected || (isConnecting && !portSelectionActive)} onPointerDown={(event) => onConnectStart(event, data.id, "source")} onClick={(event) => onPortTap(event, data.id, "source")} /> : null}
+            {!referenceSelectionState && !isGroup ? <ConnectionHandleDot side="left" scale={scale} nodeWidth={data.width} visible={portSelectionActive ? canCompletePort : hovered || isSelected || isConnecting} highlighted={canCompletePort} onPointerDown={(event) => onConnectStart(event, data.id, "target")} onClick={(event) => onPortTap(event, data.id, "target")} /> : null}
+            {!referenceSelectionState && canStartConnection ? <ConnectionHandleDot side="right" scale={scale} nodeWidth={data.width} visible={hovered || isSelected || (isConnecting && !portSelectionActive)} onPointerDown={(event) => onConnectStart(event, data.id, "source")} onClick={(event) => onPortTap(event, data.id, "source")} /> : null}
             {!referenceSelectionState && canStartConnection && onExtend && !isConnecting ? (
                 <button
                     type="button"
                     data-canvas-extend
                     aria-label="创建下游节点"
                     className="absolute left-full z-[65] hidden size-11 items-center justify-center rounded-full [@media(any-pointer:coarse)]:flex"
-                    style={{ top: `calc(50% + ${24 / scale}px)`, transform: `scale(${1 / scale})`, transformOrigin: "top left", color: theme.node.text, background: theme.toolbar.panel }}
+                    style={{ top: `calc(50% + ${24 / scale}px)`, transform: `scale(${1 / scale})`, transformOrigin: "top left", color: theme.node.text }}
                     onPointerDown={(event) => event.stopPropagation()}
                     onMouseDown={(event) => event.stopPropagation()}
                     onClick={(event) => onExtend(event, data)}
                 >
-                    <Plus className="size-5" />
+                    <span className="pointer-events-none flex size-full items-center justify-center rounded-full"
+                        style={{ scale: Math.max(28 / 44, Math.min(1, scale)), background: theme.toolbar.panel }}>
+                        <Plus className="size-5" />
+                    </span>
                 </button>
             ) : null}
 
@@ -457,15 +461,19 @@ function ResizeHandle({ corner, onMouseDown }: { corner: ResizeCorner; onMouseDo
     return <div className={`absolute z-50 size-7 ${positionClass}`} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => onMouseDown(event, corner)} />;
 }
 
-function ConnectionHandleDot({ side, scale, visible, highlighted, onPointerDown, onClick }: {
+function ConnectionHandleDot({ side, scale, nodeWidth, visible, highlighted, onPointerDown, onClick }: {
     side: "left" | "right";
     scale: number;
+    nodeWidth: number;
     visible: boolean;
     highlighted?: boolean;
     onPointerDown: (event: React.PointerEvent) => void;
     onClick: (event: React.MouseEvent) => void;
 }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const portSize = touchPortSize / scale;
+    // 节点缩小时向外移开热区，圆点仍对齐连线锚点。
+    const outwardShift = Math.max(0, portSize / 2 - nodeWidth / 8);
 
     return (
         <button
@@ -475,9 +483,13 @@ function ConnectionHandleDot({ side, scale, visible, highlighted, onPointerDown,
             aria-label={side === "left" ? "输入端口" : "输出端口"}
             tabIndex={visible ? 0 : -1}
             className={`absolute top-1/2 z-30 flex size-12 -translate-y-1/2 touch-none cursor-crosshair items-center justify-center transition-opacity duration-150 [@media(any-pointer:coarse)]:size-[var(--canvas-port-size)] ${
-                side === "left" ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2"
+                side === "left" ? "left-0 -translate-x-1/2 [@media(any-pointer:coarse)]:left-[var(--canvas-port-shift)]" : "right-0 translate-x-1/2 [@media(any-pointer:coarse)]:right-[var(--canvas-port-shift)]"
             } ${visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
-            style={{ "--canvas-port-size": `${44 / scale}px` } as React.CSSProperties}
+            style={{
+                "--canvas-port-size": `${portSize}px`,
+                "--canvas-port-shift": `${-outwardShift}px`,
+                "--canvas-port-dot-shift": `${side === "left" ? outwardShift : -outwardShift}px`,
+            } as React.CSSProperties}
             onPointerDown={onPointerDown}
             onMouseDown={(event) => event.stopPropagation()}
             onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
@@ -485,7 +497,7 @@ function ConnectionHandleDot({ side, scale, visible, highlighted, onPointerDown,
                 if (event.detail === 0) onClick(event);
             }}
         >
-            <span className="size-3 rounded-full border-2 transition-all hover:scale-125 [@media(any-pointer:coarse)]:size-[var(--canvas-port-dot)]" style={{ "--canvas-port-dot": `${(highlighted ? 14 : 10) / scale}px`, background: highlighted ? theme.node.activeStroke : theme.node.panel, borderColor: highlighted ? theme.node.activeStroke : theme.node.muted } as React.CSSProperties} />
+            <span className="relative size-3 rounded-full border-2 transition-all hover:scale-125 [@media(any-pointer:coarse)]:left-[var(--canvas-port-dot-shift)] [@media(any-pointer:coarse)]:size-[var(--canvas-port-dot)]" style={{ "--canvas-port-dot": `${(highlighted ? 14 : 10) / scale}px`, background: highlighted ? theme.node.activeStroke : theme.node.panel, borderColor: highlighted ? theme.node.activeStroke : theme.node.muted } as React.CSSProperties} />
         </button>
     );
 }

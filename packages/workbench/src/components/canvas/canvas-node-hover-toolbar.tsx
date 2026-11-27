@@ -1,5 +1,5 @@
 import { assetKindLabels } from "@workbench/constant/labels";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { CanvasDialog } from "./canvas-dialog";
 import { CanvasSegments } from "./canvas-segments";
 import { Ellipsis } from "lucide-react";
@@ -41,6 +41,7 @@ export function CanvasNodeHoverToolbar({ node, viewport, onKeep, onLeave, extraT
     const activeNode = node;
     const left = viewport.x + (node.position.x + node.width / 2) * viewport.k;
     const top = viewport.y + node.position.y * viewport.k - 14;
+    const touchScale = Math.max(2 / 3, Math.min(1, viewport.k));
     const isImage = node.type === CanvasNodeType.Image;
     const hasImage = isImage && readNodeResource(node, "render")?.kind === "image";
 
@@ -73,9 +74,9 @@ export function CanvasNodeHoverToolbar({ node, viewport, onKeep, onLeave, extraT
     return (
         <>
             <div
-                className="absolute z-[70] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border text-[15px] shadow-lg"
+                className="absolute z-[70] flex h-12 origin-bottom -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border text-[15px] shadow-lg [@media(any-pointer:coarse)]:scale-[var(--canvas-node-toolbar-scale)]"
                 data-node-toolbar={node.id}
-                style={{ left, top, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
+                style={{ left, top, "--canvas-node-toolbar-scale": touchScale, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text } as CSSProperties}
                 onMouseEnter={() => onKeep(node.id)}
                 onMouseLeave={() => {
                     if (!imageToolSettingsOpen) onLeave();
