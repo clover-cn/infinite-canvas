@@ -732,12 +732,10 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
         return { nextSelected, soloId };
     }, []);
 
-    // Capture-phase selection lets any inner element, including textarea or iframe, select the node and show its toolbar.
-    // It only selects; body onMouseDown still starts dragging, so text selection inside editors does not drag the node.
-    // Cache the capture result for the following bubbling drag handler to avoid applying shift-selection twice.
+    // 鼠标点编辑器时只选中节点；正文开始拖动时复用选中结果，避免 Shift 重复切换选区。
     const pendingSelectionRef = useRef<Set<string> | null>(null);
     const handleNodeSelectCapture = useCallback(
-        (event: ReactMouseEvent, nodeId: string) => {
+        (event: ReactPointerEvent, nodeId: string) => {
             if (event.button !== 0 || (event.target instanceof Element && event.target.closest("[data-canvas-port],[data-canvas-extend]"))) return;
             setContextMenu(null);
             setHoveredNodeId(null);
@@ -745,25 +743,24 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
             const { nextSelected } = selectNodeByEvent(event, nodeId);
             pendingSelectionRef.current = nextSelected;
         },
-        [selectNodeByEvent],
+        [selectNodeByEvent, setSelectedConnectionId],
     );
 
-    const handleNodeDragStart = useCallback((event: ReactMouseEvent | ReactPointerEvent, nodeId: string, pointerId?: number) => {
+    const handleNodeDragStart = useCallback((event: ReactPointerEvent, nodeId: string) => {
         event.stopPropagation();
-        if (event.button !== 0 || dragRef.current.isDraggingNode || previewRef.current || selectionPointer.current || connectionGesture.current) return;
-        if (pointerId !== undefined) {
-            event.preventDefault();
-            if (event.target instanceof Element) event.target.setPointerCapture(pointerId);
+        const capturedSelection = event.pointerType === "mouse" ? pendingSelectionRef.current : null;
+        pendingSelectionRef.current = null;
+        if (dragRef.current.isDraggingNode || previewRef.current || selectionPointer.current || connectionGesture.current) return;
+        if (!capturedSelection) {
             setContextMenu(null);
             setHoveredNodeId(null);
             setSelectedConnectionId(null);
         }
-        // Capture already selected the node; this only starts dragging, with a fallback selection if capture did not run.
         const currentNodes = nodesRef.current;
-        const capturedSelection = pointerId === undefined ? pendingSelectionRef.current : null;
-        pendingSelectionRef.current = null;
         const nextSelected = capturedSelection ?? selectNodeByEvent(event, nodeId).nextSelected;
         if (!nextSelected.has(nodeId)) return;
+        event.preventDefault();
+        if (event.target instanceof Element) event.target.setPointerCapture(event.pointerId);
         const dragIds = new Set(nextSelected);
         currentNodes.forEach((node) => {
             if (!nextSelected.has(node.id)) return;
@@ -776,7 +773,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
         const initialSelectedNodes = new Map(currentNodes.filter((node) => dragIds.has(node.id)).map((node): [string, { x: number; y: number }] => [node.id, { x: node.position.x, y: node.position.y }]));
         dragRef.current = {
             isDraggingNode: true,
-            pointerId: pointerId ?? null,
+            pointerId: event.pointerId,
             hasMoved: false,
             startX: event.clientX,
             startY: event.clientY,
@@ -852,7 +849,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
         }
     }, [focusNode]);
 
-    const moveNodeDrag = useCallback((event: MouseEvent) => {
+    const moveNodeDrag = useCallback((event: PointerEvent) => {
         const drag = dragRef.current;
         if (!drag.isDraggingNode || (!drag.hasMoved && !hasDragged(drag.startX, drag.startY, event.clientX, event.clientY))) return;
         drag.hasMoved = true;
@@ -953,7 +950,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
 
     const handleGlobalPointerUp = useCallback(
         (event: PointerEvent) => {
-            if (dragRef.current.pointerId === event.pointerId || (dragRef.current.pointerId === null && event.pointerType === "mouse")) finishNodeDrag(event.clientX, event.clientY);
+            if (dragRef.current.pointerId === event.pointerId) finishNodeDrag(event.clientX, event.clientY);
             if (selectionPointer.current?.id === event.pointerId && event.pointerType !== "mouse") handleGlobalPointerMove(event);
             finishSelection(event.pointerId, false);
             const gesture = connectionGesture.current;
@@ -986,31 +983,25 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
     );
 
     useEffect(() => {
-        const handleGlobalMouseMove = (event: MouseEvent) => { if (dragRef.current.pointerId === null) moveNodeDrag(event); };
-        const finishCompatibilityDrag = (event: MouseEvent) => { if (dragRef.current.pointerId === null) finishNodeDrag(event.clientX, event.clientY); };
         const cancelInteraction = (event: Event) => {
             const id = event instanceof PointerEvent ? event.pointerId : undefined;
-            if (id === undefined || dragRef.current.pointerId === id || (dragRef.current.pointerId === null && event instanceof PointerEvent && event.pointerType === "mouse")) finishNodeDrag();
+            if (id === undefined || dragRef.current.pointerId === id) finishNodeDrag();
             finishSelection(id, true);
             if (id === undefined || id === connectionGesture.current?.id) setConnecting(null);
         };
-        window.addEventListener("mousemove", handleGlobalMouseMove);
-        window.addEventListener("mouseup", finishCompatibilityDrag);
         window.addEventListener("pointerup", handleGlobalPointerUp);
         window.addEventListener("pointercancel", cancelInteraction);
         window.addEventListener("lostpointercapture", cancelInteraction);
         window.addEventListener("blur", cancelInteraction);
         window.addEventListener("pointermove", handleGlobalPointerMove);
         return () => {
-            window.removeEventListener("mousemove", handleGlobalMouseMove);
-            window.removeEventListener("mouseup", finishCompatibilityDrag);
             window.removeEventListener("pointerup", handleGlobalPointerUp);
             window.removeEventListener("pointercancel", cancelInteraction);
             window.removeEventListener("lostpointercapture", cancelInteraction);
             window.removeEventListener("blur", cancelInteraction);
             window.removeEventListener("pointermove", handleGlobalPointerMove);
         };
-    }, [finishNodeDrag, finishSelection, handleGlobalPointerMove, handleGlobalPointerUp, moveNodeDrag, setConnecting]);
+    }, [finishNodeDrag, finishSelection, handleGlobalPointerMove, handleGlobalPointerUp, setConnecting]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {

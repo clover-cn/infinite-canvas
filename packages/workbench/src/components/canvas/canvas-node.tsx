@@ -38,8 +38,8 @@ type CanvasNodeProps = {
     registryVersion?: number;
     renderPanel?: (node: CanvasNodeData) => ReactNode;
     isGroupDropTarget?: boolean;
-    onDragStart: (event: React.MouseEvent | React.PointerEvent, nodeId: string, pointerId?: number) => void;
-    onSelectCapture?: (event: React.MouseEvent, nodeId: string) => void;
+    onDragStart: (event: React.PointerEvent, nodeId: string) => void;
+    onSelectCapture?: (event: React.PointerEvent, nodeId: string) => void;
     onHoverStart: (nodeId: string) => void;
     onHoverEnd: (nodeId: string) => void;
     onConnectStart: (event: React.PointerEvent, nodeId: string, handleType: "source" | "target") => void;
@@ -254,8 +254,8 @@ export const CanvasNode = React.memo(function CanvasNode({
                 setHovered(false);
                 onHoverEnd(data.id);
             }}
-            onMouseDownCapture={(event) => {
-                if (!referenceSelectionState) onSelectCapture?.(event, data.id);
+            onPointerDownCapture={(event) => {
+                if (!referenceSelectionState && event.pointerType === "mouse") onSelectCapture?.(event, data.id);
             }}
             onContextMenu={(event) => {
                 if (referenceSelectionState) event.preventDefault();
@@ -307,18 +307,18 @@ export const CanvasNode = React.memo(function CanvasNode({
                     boxShadow: isGroupDropTarget ? `0 0 0 2px color-mix(in srgb, ${selectionColor} 40%, transparent), inset 0 0 0 999px color-mix(in srgb, ${selectionColor} 6%, transparent)` : isActive ? `0 0 0 1px color-mix(in srgb, ${selectionColor} 33%, transparent)` : isRelated ? `0 0 0 1px color-mix(in srgb, ${theme.node.muted} 33%, transparent), 0 18px 48px rgba(0,0,0,.14)` : undefined,
                 }}
                 onPointerDown={(event) => {
-                    if (referenceSelectionState || event.pointerType === "mouse" || !event.isPrimary) return;
-                    if (!(event.target instanceof Element) || event.target.closest("button,a,input,textarea,select,[contenteditable],[role='button'],[data-canvas-no-zoom]")) return;
+                    if (!event.isPrimary || event.button !== 0) return;
                     if (event.pointerType === "touch" && isCanvasTouchEdge(event.clientX)) return;
-                    onDragStart(event, data.id, event.pointerId);
-                }}
-                onMouseDown={(event) => {
-                    if (!referenceSelectionState) onDragStart(event, data.id);
-                    else if (event.button === 0 && referenceSelectionState === "available") {
-                        event.stopPropagation();
-                        onSelectReference?.(data.id);
+                    if (referenceSelectionState) {
+                        if (referenceSelectionState === "available") {
+                            event.stopPropagation();
+                            onSelectReference?.(data.id);
+                        }
+                        return;
                     }
                 }}
+                    if (!(event.target instanceof Element) || event.target.closest("button,a,input,textarea,select,[contenteditable],[role='button'],[data-canvas-no-zoom]")) return;
+                    onDragStart(event, data.id);
                 onDoubleClickCapture={(event) => { if (referenceSelectionState) event.stopPropagation(); }}
                 onDoubleClick={(event) => {
                     if (referenceSelectionState) {
@@ -454,7 +454,7 @@ function ResizeHandle({ corner, onMouseDown }: { corner: ResizeCorner; onMouseDo
         "bottom-right": "-bottom-[14px] -right-[14px] cursor-nwse-resize",
     }[corner];
 
-    return <div className={`absolute z-50 size-7 ${positionClass}`} onMouseDown={(event) => onMouseDown(event, corner)} />;
+    return <div className={`absolute z-50 size-7 ${positionClass}`} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => onMouseDown(event, corner)} />;
 }
 
 function ConnectionHandleDot({ side, scale, visible, highlighted, onPointerDown, onClick }: {
