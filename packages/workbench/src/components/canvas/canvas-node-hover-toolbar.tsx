@@ -76,7 +76,7 @@ export function CanvasNodeHoverToolbar({ node, viewport, onKeep, onLeave, extraT
             <div
                 className="absolute z-[70] flex h-12 origin-bottom -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border text-[15px] shadow-lg [@media(any-pointer:coarse)]:scale-[var(--canvas-node-toolbar-scale)]"
                 data-node-toolbar={node.id}
-                style={{ left, top, "--canvas-node-toolbar-scale": touchScale, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text } as CSSProperties}
+                style={{ left, top: `max(3rem, ${top}px)`, "--canvas-node-toolbar-scale": touchScale, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text } as CSSProperties}
                 onMouseEnter={() => onKeep(node.id)}
                 onMouseLeave={() => {
                     if (!imageToolSettingsOpen) onLeave();

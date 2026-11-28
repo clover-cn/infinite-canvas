@@ -741,7 +741,7 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
             setHoveredNodeId(null);
             setSelectedConnectionId(null);
             const { nextSelected } = selectNodeByEvent(event, nodeId);
-            pendingSelectionRef.current = nextSelected;
+            pendingSelectionRef.current = event.pointerType === "mouse" ? nextSelected : null;
         },
         [selectNodeByEvent, setSelectedConnectionId],
     );

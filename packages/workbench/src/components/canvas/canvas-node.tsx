@@ -13,6 +13,7 @@ import { getNodeDefinition, getNodePluginId, readNodeResource, useNodeRegistryVe
 import { buildNodeContext } from "@workbench/lib/canvas/plugin-node-context";
 import { useThemeStore } from "@workbench/stores/use-theme-store";
 import { CANVAS_NODE_DETAIL_SCALE } from "@workbench/lib/canvas/canvas-node-geometry";
+import { hasNodeMedia } from "@workbench/lib/media-source";
 import { isCanvasTouchEdge } from "./use-canvas-touch";
 import { getImagePreviewRevision, loadImagePreview, previewUrlFor, subscribeImagePreviews } from "@workbench/services/image-storage";
 import { CanvasNodeType, type CanvasNodeData, type Position } from "@infinite-canvas/shared/canvas/schema/canvas";
@@ -100,6 +101,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     const isGroup = data.type === CanvasNodeType.Group;
     const canStartConnection = definition?.hasSourceHandle ?? true;
     const compact = scale < CANVAS_NODE_DETAIL_SCALE && (data.type === CanvasNodeType.Text || data.type === CanvasNodeType.Video);
+    const hasVideoPlayer = data.type === CanvasNodeType.Video && hasNodeMedia(data);
     // Nodes with the interaction/move toggle ignore content pointer events in move mode and allow interaction in interactive mode.
     // forceInteractive states such as editing stay interactive, as do empty nodes so their upload and generation actions remain usable.
     const supportsInteractionToggle = Boolean(definition?.interactionToggle);
@@ -256,7 +258,13 @@ export const CanvasNode = React.memo(function CanvasNode({
                 onHoverEnd(data.id);
             }}
             onPointerDownCapture={(event) => {
-                if (!referenceSelectionState && event.pointerType === "mouse") onSelectCapture?.(event, data.id);
+                if (referenceSelectionState) return;
+                // 触屏点播放器时只选中节点，播放器仍负责播放和进度条。
+                const target = event.target;
+                const touchesPlayer = event.isPrimary && (event.pointerType !== "touch" || !isCanvasTouchEdge(event.clientX)) &&
+                    target instanceof Element && event.currentTarget.contains(target) &&
+                    target.closest("[data-canvas-media-player]")?.getAttribute("data-canvas-media-player") === data.id;
+                if (event.pointerType === "mouse" || touchesPlayer) onSelectCapture?.(event, data.id);
             }}
             onContextMenu={(event) => {
                 if (referenceSelectionState) event.preventDefault();
@@ -357,8 +365,8 @@ export const CanvasNode = React.memo(function CanvasNode({
                         <GripHorizontal className="size-4" />
                     </div>
                 ) : null}
-                {!compact && data.type === CanvasNodeType.Text && isSelected && !referenceSelectionState ? (
-                    <div aria-hidden="true" className="absolute inset-x-4 top-0 z-[55] hidden h-6 cursor-move items-center justify-center [@media(any-pointer:coarse)]:flex" style={{ color: theme.node.muted }}>
+                {!compact && !referenceSelectionState && (hasVideoPlayer || (data.type === CanvasNodeType.Text && isSelected)) ? (
+                    <div aria-hidden="true" title={hasVideoPlayer ? "拖动视频节点" : undefined} className={`absolute top-0 z-[55] h-6 cursor-move items-center justify-center ${hasVideoPlayer ? "right-4 flex w-11 rounded-b-lg" : "inset-x-4 hidden [@media(any-pointer:coarse)]:flex"}`} style={{ color: hasVideoPlayer ? theme.node.text : theme.node.muted, background: hasVideoPlayer ? theme.toolbar.panel : undefined }}>
                         <GripHorizontal className="size-4" />
                     </div>
                 ) : null}

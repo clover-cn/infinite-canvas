@@ -93,8 +93,8 @@ export function MediaPlayer({ source, read, canvas, className }: { source: Sourc
     };
 
     return <>
-        {kind === "video" ? <video ref={video} controls playsInline preload="none" poster={poster} className={cn(className, phase !== "ready" && "hidden")} data-canvas-video={canvas?.nodeId} data-canvas-no-zoom /> : <audio ref={audio} controls preload="none" className={cn(className, phase !== "ready" && "hidden")} data-canvas-no-zoom />}
-        {phase !== "ready" ? <button type="button" data-canvas-no-zoom className={cn(className, "relative flex min-h-9 items-center justify-center bg-transparent bg-contain bg-center bg-no-repeat text-sm hover:opacity-75")} style={poster ? { backgroundImage: `url("${poster}")` } : undefined} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => {
+        {kind === "video" ? <video ref={video} controls playsInline preload="none" poster={poster} className={cn(className, phase !== "ready" && "hidden")} data-canvas-video={canvas?.nodeId} data-canvas-media-player={canvas?.nodeId} data-canvas-no-zoom /> : <audio ref={audio} controls preload="none" className={cn(className, phase !== "ready" && "hidden")} data-canvas-media-player={canvas?.nodeId} data-canvas-no-zoom />}
+        {phase !== "ready" ? <button type="button" data-canvas-media-player={canvas?.nodeId} data-canvas-no-zoom className={cn(className, "relative flex min-h-9 items-center justify-center bg-transparent bg-contain bg-center bg-no-repeat text-sm hover:opacity-75")} style={poster ? { backgroundImage: `url("${poster}")` } : undefined} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => {
             event.stopPropagation();
             if (phase === "loading") current.current?.();
             else void start();
