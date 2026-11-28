@@ -42,6 +42,7 @@ class MainActivity : Activity() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 val scheme = request.url.scheme
                 if (scheme == "blob" || scheme == "data") return null
+                if (request.url.toString() == "https://$PREVIEW_HOST/_native/channels/models") return loadChannelModels(request)
                 return assets.shouldInterceptRequest(request.url)
                     ?: WebResourceResponse("text/plain", "utf-8", 404, "Not Found", emptyMap(), "资源未找到".byteInputStream())
             }

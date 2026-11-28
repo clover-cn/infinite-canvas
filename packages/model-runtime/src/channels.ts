@@ -3,14 +3,21 @@ import type { ModelListFormat } from "@infinite-canvas/shared/channels";
 import { ModelExecutionError } from "@infinite-canvas/shared/model-http";
 import { buildModelApiUrl } from "./script.js";
 
-export async function fetchChannelModels(baseUrl: string, apiKey: string, format: ModelListFormat, mapUrl: (url: string) => string, signal?: AbortSignal): Promise<string[]> {
+type ModelListTarget = string | { url: string; headers: Record<string, string> };
+
+export async function fetchChannelModels(baseUrl: string, apiKey: string, format: ModelListFormat, resolveTarget: (url: string) => ModelListTarget, signal?: AbortSignal): Promise<string[]> {
     const base = baseUrl.replace(/\/+$/, "");
     const root = /\/v1(?:beta)?$/i.test(base) ? base : `${base}/v1beta`;
     const endpoint = format === "gemini" ? `${root}/models` : buildModelApiUrl(baseUrl, "/models");
-    const url = mapUrl(endpoint);
+    const target = resolveTarget(endpoint);
+    const url = typeof target === "string" ? target : target.url;
+    const proxied = typeof target === "string" && url !== endpoint;
     try {
         const response = await axios.get(url, {
-            headers: format === "gemini" ? { "x-goog-api-key": apiKey, "Content-Type": "application/json" } : { Authorization: `Bearer ${apiKey}` },
+            headers: {
+                ...(format === "gemini" ? { "x-goog-api-key": apiKey, "Content-Type": "application/json" } : { Authorization: `Bearer ${apiKey}` }),
+                ...(typeof target === "string" ? {} : target.headers),
+            },
             signal,
         });
         if (response.data.error) throw new axios.AxiosError("Model list failed", undefined, response.config, response.request, response);
@@ -24,7 +31,9 @@ export async function fetchChannelModels(baseUrl: string, apiKey: string, format
             console.warn("[channels] model list request failed", { status, code: error.code });
             if (status === 401 || status === 403 || error.response?.data?.error?.code === "invalid_api_key") throw new ModelExecutionError("MODEL_LIST_AUTH");
             if (status === 429) throw new ModelExecutionError("MODEL_LIST_LIMITED");
-            if (!error.response) throw new ModelExecutionError(url !== endpoint ? "MODEL_PROXY" : "MODEL_LIST_CONNECTION");
+            if (!error.response || (typeof target !== "string" && error.response.headers["x-canvas-native-network-error"] === "1")) {
+                throw new ModelExecutionError(proxied ? "MODEL_PROXY" : "MODEL_LIST_CONNECTION");
+            }
         }
         throw new ModelExecutionError("MODEL_LIST_FAILED");
     }

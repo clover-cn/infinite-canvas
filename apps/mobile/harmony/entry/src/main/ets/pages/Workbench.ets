@@ -1,21 +1,21 @@
 import { webview } from '@kit.ArkWeb';
+import { loadChannelModels } from '../ChannelModels';
 
 const PREVIEW_ORIGIN = 'https://canvas-preview.invalid/';
 
-const contentTypes: Record<string, string> = {
-  html: 'text/html',
-  js: 'text/javascript',
-  css: 'text/css',
-  json: 'application/json',
-  svg: 'image/svg+xml',
-  png: 'image/png',
-  jpeg: 'image/jpeg',
-  jpg: 'image/jpeg',
-  webp: 'image/webp',
-  ico: 'image/x-icon',
-  woff2: 'font/woff2',
-  wasm: 'application/wasm'
-};
+const contentTypes = new Map<string, string>()
+  .set('html', 'text/html')
+  .set('js', 'text/javascript')
+  .set('css', 'text/css')
+  .set('json', 'application/json')
+  .set('svg', 'image/svg+xml')
+  .set('png', 'image/png')
+  .set('jpeg', 'image/jpeg')
+  .set('jpg', 'image/jpeg')
+  .set('webp', 'image/webp')
+  .set('ico', 'image/x-icon')
+  .set('woff2', 'font/woff2')
+  .set('wasm', 'application/wasm');
 
 @Entry
 @Component
@@ -32,7 +32,7 @@ struct Workbench {
       if (manager && /^[a-zA-Z0-9_./-]+$/.test(path) && path.split('/').every((part: string) => part !== '' && part !== '.' && part !== '..')) {
         const bytes = manager.getRawFileContentSync('workbench/' + path);
         response.setResponseData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-        response.setResponseMimeType(contentTypes[path.slice(path.lastIndexOf('.') + 1)] ?? 'application/octet-stream');
+        response.setResponseMimeType(contentTypes.get(path.slice(path.lastIndexOf('.') + 1)) ?? 'application/octet-stream');
         response.setResponseCode(200);
         response.setReasonMessage('OK');
         return response;
@@ -48,9 +48,14 @@ struct Workbench {
   }
 
   onBackPress(): boolean {
-    if (!this.controller.accessBackward()) return false;
-    this.controller.backward();
-    return true;
+    try {
+      if (!this.controller.accessBackward()) return false;
+      this.controller.backward();
+      return true;
+    } catch (error) {
+      console.error('工作台网页返回失败', error);
+      return false;
+    }
   }
 
   build() {
@@ -68,6 +73,7 @@ struct Workbench {
         .onInterceptRequest((event) => {
           const url = event.request.getRequestUrl();
           if (url.startsWith('blob:') || url.startsWith('data:')) return null;
+          if (url === PREVIEW_ORIGIN + '_native/channels/models') return loadChannelModels(event.request);
           return this.loadAsset(url);
         })
         .width('100%')
