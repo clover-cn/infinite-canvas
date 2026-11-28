@@ -1,4 +1,4 @@
-import { network } from "@workbench/services/network/runtime";
+import { requestNetwork } from "@workbench/services/network/runtime";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -36,7 +36,7 @@ export function useVersionCheck() {
 
     const checkLatestVersion = useCallback(async (signal: AbortSignal) => {
         try {
-            const response = await fetch(network.url(latestVersionUrl), { signal });
+            const response = await requestNetwork(latestVersionUrl, { signal });
             if (!response.ok) return false;
             const version = await response.text();
             signal.throwIfAborted();
@@ -51,7 +51,10 @@ export function useVersionCheck() {
         async (showMessage = false) => {
             setChecking(true);
             try {
-                const [versionResponse, changelogResponse] = await Promise.all([fetch(network.url(latestVersionUrl)), fetch(network.url(latestChangelogUrl))]);
+                const [versionResponse, changelogResponse] = await Promise.all([
+                    requestNetwork(latestVersionUrl),
+                    requestNetwork(latestChangelogUrl),
+                ]);
                 if (!versionResponse.ok) throw new Error("版本读取失败");
                 if (!changelogResponse.ok) throw new Error("更新日志读取失败");
                 const [version, changelog] = await Promise.all([versionResponse.text(), changelogResponse.text()]);
