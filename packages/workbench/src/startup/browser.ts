@@ -18,8 +18,13 @@ export async function startBrowser() {
     initializeStorageInspection(createBrowserStorageInspection());
     initializeWorkspaceConfig(createBrowserWorkspaceConfig());
     await loadWorkspaceConfig();
-    const { createBrowserNetwork } = await import("../services/network/browser");
-    initializeNetwork(createBrowserNetwork());
+    if (import.meta.env.MODE === "mobile-preview" && location.origin === "https://canvas-preview.invalid") {
+        const { createMobileNetwork } = await import("../services/network/mobile");
+        initializeNetwork(createMobileNetwork());
+    } else {
+        const { createBrowserNetwork } = await import("../services/network/browser");
+        initializeNetwork(createBrowserNetwork());
+    }
     // 模型脚本库在导入时读取存储，必须等存储初始化后再加载。
     const { createBrowserModels } = await import("../services/api/models/browser");
     const { createBrowserChannels } = await import("../services/channels/browser");

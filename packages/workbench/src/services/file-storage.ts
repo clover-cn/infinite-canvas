@@ -1,4 +1,4 @@
-import { network } from "@workbench/services/network/runtime";
+import { requestNetwork } from "@workbench/services/network/runtime";
 import { storedAssetFromUrl } from "@workbench/lib/media-source";
 import { ModelExecutionError } from "@infinite-canvas/shared/model-http";
 import { PluginError } from "@infinite-canvas/shared/plugins";
@@ -55,7 +55,7 @@ export async function readMediaBlob(storageKey: string | undefined, url: string 
             return blob;
         }
         if (!url) throw new PluginError("PLUGIN_NOT_FOUND");
-        const response = await fetch(network.url(url), { signal });
+        const response = await requestNetwork(url, { signal });
         signal?.throwIfAborted();
         if (!response.ok) throw new PluginError("PLUGIN_OPERATION_FAILED");
         return await response.blob();

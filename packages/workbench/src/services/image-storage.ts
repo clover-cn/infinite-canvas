@@ -1,4 +1,4 @@
-import { network } from "@workbench/services/network/runtime";
+import { requestNetwork } from "@workbench/services/network/runtime";
 import { storedAssetFromUrl } from "@workbench/lib/media-source";
 import { storage } from "@workbench/services/storage/runtime";
 import { PluginError } from "@infinite-canvas/shared/plugins";
@@ -89,7 +89,7 @@ export async function fetchImageBlob(url: string, options?: ImageReadOptions) {
         controller.abort();
     }, IMAGE_DOWNLOAD_TIMEOUT_MS);
     try {
-        const response = await fetch(network.url(url), { signal: controller.signal });
+        const response = await requestNetwork(url, { signal: controller.signal });
         if (!response.ok) throw namedError(IMAGE_RESPONSE_ERROR);
         return await response.blob();
     } catch (error) {

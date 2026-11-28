@@ -10,6 +10,7 @@ export const modelErrorMessages = {
     MODEL_LIST_FAILED: "暂时无法获取模型列表，请检查渠道地址和列表格式后重试。",
     MODEL_CONFIG_MISSING: "所选模型的配置已不可用，请检查渠道、密钥和调用方式后重试。",
     MODEL_REFERENCE_MISSING: "无法读取参考素材，请重新选择素材后重试。",
+    MODEL_MOBILE_REFERENCE_UNAVAILABLE: "移动预览暂不支持需要上传文件或内嵌编码的参考素材，请用电脑端生成，或选择支持公开 HTTPS 引用的调用方式。",
     MODEL_FAILED: "本次生成未完成，请检查模型配置或稍后重试。",
     MODEL_AUTH: "鉴权失败，请检查 API Key、套餐权限或模型权限",
     MODEL_INVALID_KEY: "无效的令牌，请检查 API Key 是否正确",

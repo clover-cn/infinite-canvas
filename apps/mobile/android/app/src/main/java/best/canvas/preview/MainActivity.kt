@@ -1,6 +1,7 @@
 package best.canvas.preview
 
 import android.app.Activity
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -13,9 +14,12 @@ import android.window.OnBackInvokedDispatcher
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 
 class MainActivity : Activity() {
     private lateinit var workbench: WebView
+    private val nativeHttp = NativeHttp()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,14 +39,29 @@ class MainActivity : Activity() {
             allowFileAccess = false
             allowContentAccess = false
         }
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            WebViewCompat.addWebMessageListener(workbench, "CanvasNativeHttp", setOf("https://$PREVIEW_HOST")) { _, message, _, isMainFrame, reply ->
+                val payload = message.data
+                if (isMainFrame && payload != null) {
+                    val result = nativeHttp.control(payload)
+                    if (result.isNotEmpty()) reply.postMessage(result)
+                }
+            }
+        }
         workbench.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                nativeHttp.close()
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
                 request.url.scheme != "https" || request.url.host != PREVIEW_HOST
 
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 val scheme = request.url.scheme
                 if (scheme == "blob" || scheme == "data") return null
-                if (request.url.toString() == "https://$PREVIEW_HOST/_native/channels/models") return loadChannelModels(request)
+                val nativePath = "https://$PREVIEW_HOST/_native/http/"
+                val url = request.url.toString()
+                if (url.startsWith(nativePath)) return nativeHttp.load(request, url.removePrefix(nativePath))
                 return assets.shouldInterceptRequest(request.url)
                     ?: WebResourceResponse("text/plain", "utf-8", 404, "Not Found", emptyMap(), "资源未找到".byteInputStream())
             }
@@ -82,6 +101,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        nativeHttp.close()
         (workbench.parent as? LinearLayout)?.removeView(workbench)
         workbench.destroy()
         super.onDestroy()

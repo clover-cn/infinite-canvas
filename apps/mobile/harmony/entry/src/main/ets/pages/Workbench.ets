@@ -1,7 +1,8 @@
 import { webview } from '@kit.ArkWeb';
-import { loadChannelModels } from '../ChannelModels';
+import { NativeHttp } from '../NativeHttp';
 
 const PREVIEW_ORIGIN = 'https://canvas-preview.invalid/';
+const NATIVE_HTTP_PATH = PREVIEW_ORIGIN + '_native/http/';
 
 const contentTypes = new Map<string, string>()
   .set('html', 'text/html')
@@ -21,6 +22,7 @@ const contentTypes = new Map<string, string>()
 @Component
 struct Workbench {
   private controller: webview.WebviewController = new webview.WebviewController();
+  private nativeHttp: NativeHttp = new NativeHttp();
 
   private loadAsset(requestUrl: string): WebResourceResponse {
     const response = new WebResourceResponse();
@@ -35,6 +37,12 @@ struct Workbench {
         response.setResponseMimeType(contentTypes.get(path.slice(path.lastIndexOf('.') + 1)) ?? 'application/octet-stream');
         response.setResponseCode(200);
         response.setReasonMessage('OK');
+        if (path === 'index.html') {
+          const headers: Header[] = [
+            { headerKey: 'Content-Security-Policy', headerValue: "frame-src 'none'; object-src 'none'; base-uri 'none'" }
+          ];
+          response.setResponseHeader(headers);
+        }
         return response;
       }
     } catch {
@@ -58,6 +66,13 @@ struct Workbench {
     }
   }
 
+  aboutToDisappear(): void {
+    this.nativeHttp.close();
+    try { this.controller.deleteJavaScriptRegister('CanvasNativeHttp'); } catch {
+      // Web 组件可能已释放。
+    }
+  }
+
   build() {
     Column() {
       Text('移动端预览 · 请使用测试作品')
@@ -69,11 +84,18 @@ struct Workbench {
         .javaScriptAccess(true)
         .domStorageAccess(true)
         .fileAccess(false)
+        .javaScriptProxy({
+          object: this.nativeHttp,
+          name: 'CanvasNativeHttp',
+          methodList: ['stage', 'cancel'],
+          controller: this.controller
+        })
+        .onPageBegin(() => this.nativeHttp.close())
         .onLoadIntercept((event) => !event.data.getRequestUrl().startsWith(PREVIEW_ORIGIN))
         .onInterceptRequest((event) => {
           const url = event.request.getRequestUrl();
           if (url.startsWith('blob:') || url.startsWith('data:')) return null;
-          if (url === PREVIEW_ORIGIN + '_native/channels/models') return loadChannelModels(event.request);
+          if (url.startsWith(NATIVE_HTTP_PATH)) return this.nativeHttp.load(event.request, url.slice(NATIVE_HTTP_PATH.length));
           return this.loadAsset(url);
         })
         .width('100%')

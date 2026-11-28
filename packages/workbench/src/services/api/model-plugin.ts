@@ -1,4 +1,4 @@
-import { network } from "@workbench/services/network/runtime";
+import { network, requestNetwork } from "@workbench/services/network/runtime";
 import { modelCapabilityLabels } from "@workbench/constant/labels";
 import { runScript, type ScriptHost } from "@infinite-canvas/model-runtime/script";
 import { assertCallScript, toModelError } from "@infinite-canvas/model-runtime/execute";
@@ -8,6 +8,8 @@ import { normalizeLocalProxyUrl, useConfigStore } from "@workbench/stores/use-co
 
 import type { ModelCapability } from "@infinite-canvas/shared/models";
 import type { ModelCall, ModelExecutionConfig } from "@infinite-canvas/shared/model-execution";
+import { ModelExecutionError } from "@infinite-canvas/shared/model-http";
+import { isPublicMediaUrl } from "@infinite-canvas/model-runtime/object-storage";
 
 import type { GenerateTextOnStepEndCallback, LanguageModelUsage, ModelMessage, StopCondition, TextStreamPart, ToolSet } from "ai";
 import type { TextAgentProtocol } from "@infinite-canvas/shared/model-execution";
@@ -55,10 +57,12 @@ export async function runModelCall<T = unknown>(args: RunPluginArgs & { config: 
 
 /** 浏览器读取素材、上传公开链接和识别本地代理的方式。 */
 export function createBrowserScriptHost(signal?: AbortSignal): ScriptHost {
+    const mobile = network.kind === "mobile";
+    const rejectReference = async () => { throw new ModelExecutionError("MODEL_MOBILE_REFERENCE_UNAVAILABLE"); };
     const toBlob = async (source: string | Blob) => {
         if (source instanceof Blob) return source;
         try {
-            const response = await fetch(network.url(source), { signal });
+            const response = await requestNetwork(source, { signal });
             if (!response.ok) throw new Error("Media request failed", { cause: response });
             return await response.blob();
         } catch (error) {
@@ -69,8 +73,10 @@ export function createBrowserScriptHost(signal?: AbortSignal): ScriptHost {
     };
     return {
         mapUrl: network.url,
+        request: network.request ? (url, init) => network.request!(url, init, "model") : undefined,
         toBlob,
-        toDataUrl: async (source) => {
+        toReferenceBlob: mobile ? rejectReference : undefined,
+        toDataUrl: mobile ? rejectReference : async (source) => {
             if (typeof source === "string" && source.startsWith("data:")) return source;
             const blob = await toBlob(source);
             return new Promise<string>((resolve, reject) => {
@@ -86,6 +92,9 @@ export function createBrowserScriptHost(signal?: AbortSignal): ScriptHost {
             });
         },
         toPublicUrl: async (source) => {
+            if (mobile && (typeof source !== "string" || !isPublicMediaUrl(source))) {
+                throw new ModelExecutionError("MODEL_MOBILE_REFERENCE_UNAVAILABLE");
+            }
             const { toPublicMediaUrl } = await import("@workbench/services/object-storage");
             return toPublicMediaUrl(source, signal);
         },

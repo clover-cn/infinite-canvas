@@ -4,6 +4,7 @@ import type { ModelCapability } from "@infinite-canvas/shared/models";
 import type { ModelExecutionConfig } from "@infinite-canvas/shared/model-execution";
 import type { ModelCallUpstream } from "@infinite-canvas/shared/model-calls";
 import { ModelExecutionError } from "@infinite-canvas/shared/model-http";
+import { createFetchAxiosAdapter } from "./fetch-axios.js";
 
 type RequestOptions = { signal?: AbortSignal; onUpstream?: (entry: ModelCallUpstream) => void };
 
@@ -41,7 +42,9 @@ export type ScriptArgs = {
 
 export type ScriptHost = {
     mapUrl: (url: string) => string;
+    request?: (url: string, init: RequestInit) => Promise<Response>;
     toBlob: (source: string | Blob) => Promise<Blob>;
+    toReferenceBlob?: (source: string | Blob) => Promise<Blob>;
     toDataUrl: (source: string | Blob) => Promise<string>;
     toPublicUrl: (source: string | Blob) => Promise<string>;
     runTextAgent?: (protocol: string, settings?: Record<string, unknown>) => Promise<unknown>;
@@ -130,6 +133,7 @@ function createPluginHttp(config: ModelExecutionConfig, host: ScriptHost, option
             headers: pluginHeaders({ Authorization: `Bearer ${config.apiKey}`, ...opts?.headers }, method === "post" && !isForm && body !== undefined),
             responseType: opts?.responseType === "blob" ? "arraybuffer" : opts?.responseType || "json",
             signal: options?.signal,
+            ...(host.request && { adapter: createFetchAxiosAdapter(host.request) }),
         }, options?.onUpstream);
         if (response.data?.error) throw new axios.AxiosError("Model request failed", undefined, response.config, response.request, response);
         return opts?.responseType === "blob" && !(response.data instanceof Blob) ? new Blob([response.data], { type: response.headers["content-type"] as string }) : response.data;
@@ -145,7 +149,13 @@ function createPluginHttp(config: ModelExecutionConfig, host: ScriptHost, option
 function createPluginRequest(config: ModelExecutionConfig, host: ScriptHost, options?: RequestOptions) {
     return async (requestConfig: AxiosRequestConfig & { url: string }) => {
         const url = /^https?:/i.test(requestConfig.url) ? requestConfig.url : config.baseUrl.replace(/\/+$/, "") + "/" + requestConfig.url.replace(/^\//, "");
-        const response = await traceRequest({ ...requestConfig, responseType: requestConfig.responseType === "blob" ? "arraybuffer" : requestConfig.responseType, url: host.mapUrl(url), signal: options?.signal }, options?.onUpstream);
+        const response = await traceRequest({
+            ...requestConfig,
+            responseType: requestConfig.responseType === "blob" ? "arraybuffer" : requestConfig.responseType,
+            url: host.mapUrl(url),
+            signal: options?.signal,
+            ...(host.request && { adapter: createFetchAxiosAdapter(host.request) }),
+        }, options?.onUpstream);
         if (response.data?.error) throw new axios.AxiosError("Model request failed", undefined, response.config, response.request, response);
         return requestConfig.responseType === "blob" && !(response.data instanceof Blob) ? new Blob([response.data], { type: response.headers["content-type"] as string }) : response.data;
     };
@@ -159,9 +169,11 @@ async function streamModelEvents(config: ModelExecutionConfig, host: ScriptHost,
     const entry: ModelCallUpstream = { method: "POST", url: traceUrl(host.mapUrl(url)), headers: traceHeaders(headers), body: traceValue(options.data) };
     let response: Response;
     try {
-        response = await fetch(host.mapUrl(url), { method: "POST", headers, body: JSON.stringify(options.data), signal });
+        response = await (host.request ?? fetch)(host.mapUrl(url), { method: "POST", headers, body: JSON.stringify(options.data), signal });
     } catch (error) {
         onUpstream?.({ ...entry, error: error instanceof Error ? error.message : String(error) });
+        signal?.throwIfAborted();
+        if (host.request && error instanceof Error) throw new ModelExecutionError("MODEL_NETWORK", error.message);
         throw error;
     }
     if (!response.ok) {
@@ -254,7 +266,7 @@ export async function runScript<T = unknown>(args: ScriptArgs, host: ScriptHost)
             runTextAgent: host.runTextAgent,
             poll: createPoll(signal),
             sleep: (ms: number) => sleep(ms, signal),
-            toBlob: host.toBlob,
+            toBlob: host.toReferenceBlob ?? host.toBlob,
             toDataUrl: host.toDataUrl,
             toPublicUrl: host.toPublicUrl,
             markdownImages: async (source: string) => {

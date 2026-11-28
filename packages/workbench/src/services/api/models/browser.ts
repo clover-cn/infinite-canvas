@@ -17,6 +17,9 @@ async function readReferences(references: ModelReference[], signal?: AbortSignal
         signal?.throwIfAborted();
         const { media } = reference;
         let url = media.url;
+        if (network.kind === "mobile" && (media.storageKey || (url && !url.startsWith("https://")))) {
+            throw new ModelExecutionError("MODEL_MOBILE_REFERENCE_UNAVAILABLE");
+        }
         if (media.storageKey) {
             if (reference.kind === "image") url = await imageToDataUrl(media, { signal });
             else {
@@ -33,6 +36,7 @@ async function readReferences(references: ModelReference[], signal?: AbortSignal
     signal?.throwIfAborted();
     const failed = results.find((result) => result.status === "rejected");
     if (failed?.status === "rejected") {
+        if (failed.reason instanceof ModelExecutionError) throw failed.reason;
         console.error("[models] read reference", failed.reason);
         throw new ModelExecutionError("MODEL_REFERENCE_MISSING");
     }
@@ -47,7 +51,7 @@ export function createBrowserModels(): ModelAdapter {
     return observeModels({
         async fetchText(config, protocol, url, init) {
             const target = network.url(url);
-            try { return await fetch(target, init); }
+            try { return await (network.request ? network.request(target, init, "model") : fetch(target, init)); }
             catch (error) {
                 if (init?.signal?.aborted) throw error;
                 throw new Error(target === url ? "TEXT_NETWORK_FAILED" : "TEXT_PROXY_FAILED", { cause: error });

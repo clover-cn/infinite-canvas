@@ -3,7 +3,7 @@ import mime from "mime";
 import { nanoid } from "nanoid";
 import { PLUGIN_PACKAGE_MAX_BYTES, assertPluginConflicts, type InstalledPlugin, readPluginClientFiles, DEFAULT_PLUGIN_REGISTRY, PluginError, fetchPluginIndex, fetchPluginTarball, pluginArchiveFiles, readPluginArchive, pluginRegistrySchema, type PluginAdapter, type PluginInstall, type PluginPackageInfo, type PluginRegistryConfig } from "@infinite-canvas/shared/plugins";
 import { storage } from "@workbench/services/storage/runtime";
-import { network } from "@workbench/services/network/runtime";
+import { requestNetwork } from "@workbench/services/network/runtime";
 
 type BrowserPlugin = InstalledPlugin & { sourceId?: string };
 
@@ -36,7 +36,7 @@ export function createBrowserPlugins(): PluginAdapter {
     };
     const config = async () => (await collection.getItem<PluginRegistryConfig>("config")) ?? { registry: DEFAULT_PLUGIN_REGISTRY };
     const fetchResource = async (url: string, signal?: AbortSignal) => {
-        const response = await fetch(network.url(url), { signal });
+        const response = await requestNetwork(url, { signal });
         if (!response.ok) throw new PluginError("PLUGIN_DOWNLOAD_FAILED");
         return response;
     };

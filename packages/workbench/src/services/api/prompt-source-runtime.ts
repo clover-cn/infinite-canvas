@@ -1,4 +1,4 @@
-import { network } from "@workbench/services/network/runtime";
+import { requestNetwork } from "@workbench/services/network/runtime";
 import type { PromptSource } from "./prompt-source-presets";
 
 export type RawPrompt = {
@@ -23,7 +23,7 @@ export type RawPrompt = {
 type RunOptions = { signal?: AbortSignal };
 
 async function fetchSource(source: PromptSource, options?: RunOptions) {
-    const response = await fetch(network.url(source.url), { cache: "no-store", signal: options?.signal });
+    const response = await requestNetwork(source.url, { cache: "no-store", signal: options?.signal });
     if (!response.ok) throw new Error(`请求失败（${response.status}）`);
     return response.json();
 }
