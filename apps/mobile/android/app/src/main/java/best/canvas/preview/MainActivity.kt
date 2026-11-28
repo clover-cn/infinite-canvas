@@ -13,9 +13,12 @@ import android.webkit.WebViewClient
 import android.window.OnBackInvokedDispatcher
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.webkit.ServiceWorkerClientCompat
+import androidx.webkit.ServiceWorkerControllerCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import java.io.IOException
 
 class MainActivity : Activity() {
     private lateinit var workbench: WebView
@@ -33,6 +36,22 @@ class MainActivity : Activity() {
             .setDomain(PREVIEW_HOST)
             .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE) &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST)) {
+            val appAssets = applicationContext.assets
+            // 注册脚本的请求可能绕过 WebViewClient，直接从安装包返回脚本。
+            ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(object : ServiceWorkerClientCompat() {
+                override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? {
+                    if (request.method != "GET" || request.url.toString() != "https://$PREVIEW_HOST/plugin-files-sw.js") return null
+                    return try {
+                        WebResourceResponse("text/javascript", "utf-8", 200, "OK",
+                            mapOf("Cache-Control" to "no-store"), appAssets.open("plugin-files-sw.js"))
+                    } catch (_: IOException) {
+                        WebResourceResponse("text/plain", "utf-8", 404, "Not Found", emptyMap(), null)
+                    }
+                }
+            })
+        }
         workbench.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true

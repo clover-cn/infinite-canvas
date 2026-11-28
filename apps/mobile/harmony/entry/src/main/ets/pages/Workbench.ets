@@ -1,8 +1,9 @@
-import { webview } from '@kit.ArkWeb';
+import { webview, WebNetErrorList } from '@kit.ArkWeb';
 import { NativeHttp } from '../NativeHttp';
 
 const PREVIEW_ORIGIN = 'https://canvas-preview.invalid/';
 const NATIVE_HTTP_PATH = PREVIEW_ORIGIN + '_native/http/';
+const PLUGIN_WORKER_FILE = 'plugin-files-sw.js';
 
 const contentTypes = new Map<string, string>()
   .set('html', 'text/html')
@@ -23,6 +24,45 @@ const contentTypes = new Map<string, string>()
 struct Workbench {
   private controller: webview.WebviewController = new webview.WebviewController();
   private nativeHttp: NativeHttp = new NativeHttp();
+  private pluginWorkerHandler: webview.WebSchemeHandler | undefined = undefined;
+
+  private attachPluginWorker(): void {
+    const manager = this.getUIContext().getHostContext()?.resourceManager;
+    if (!manager || this.pluginWorkerHandler) return;
+    try {
+      const scheme = new webview.WebSchemeHandler();
+      scheme.onRequestStart((request: webview.WebSchemeHandlerRequest, handler: webview.WebResourceHandler): boolean => {
+        if (request.getRequestUrl() !== PREVIEW_ORIGIN + PLUGIN_WORKER_FILE || request.getRequestMethod() !== 'GET') return false;
+        let bytes: Uint8Array | undefined;
+        try {
+          bytes = manager.getRawFileContentSync('workbench/' + PLUGIN_WORKER_FILE);
+        } catch (error) {
+          console.error('读取包内插件加载脚本失败', error);
+        }
+        try {
+          const response = new webview.WebSchemeHandlerResponse();
+          response.setNetErrorCode(WebNetErrorList.NET_OK);
+          response.setStatus(bytes ? 200 : 404);
+          response.setStatusText(bytes ? 'OK' : 'Not Found');
+          response.setMimeType('text/javascript');
+          response.setHeaderByName('Content-Type', 'text/javascript', false);
+          response.setHeaderByName('Cache-Control', 'no-store', false);
+          handler.didReceiveResponse(response);
+          if (bytes) handler.didReceiveResponseBody(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+          handler.didFinish();
+        } catch (error) {
+          console.error('返回包内插件加载脚本失败', error);
+        }
+        return true;
+      });
+      // 页面和 Service Worker 的请求可能走不同的拦截入口，两处都提供同一个包内脚本。
+      webview.WebviewController.setServiceWorkerWebSchemeHandler('https', scheme);
+      this.pluginWorkerHandler = scheme;
+      this.controller.setWebSchemeHandler('https', scheme);
+    } catch (error) {
+      console.error('注册包内插件加载脚本入口失败', error);
+    }
+  }
 
   private loadAsset(requestUrl: string): WebResourceResponse {
     const response = new WebResourceResponse();
@@ -68,6 +108,10 @@ struct Workbench {
 
   aboutToDisappear(): void {
     this.nativeHttp.close();
+    if (this.pluginWorkerHandler) {
+      webview.WebviewController.clearServiceWorkerWebSchemeHandler();
+      this.pluginWorkerHandler = undefined;
+    }
     try { this.controller.deleteJavaScriptRegister('CanvasNativeHttp'); } catch {
       // Web 组件可能已释放。
     }
@@ -90,6 +134,7 @@ struct Workbench {
           methodList: ['stage', 'cancel'],
           controller: this.controller
         })
+        .onControllerAttached(() => this.attachPluginWorker())
         .onPageBegin(() => this.nativeHttp.close())
         .onLoadIntercept((event) => !event.data.getRequestUrl().startsWith(PREVIEW_ORIGIN))
         .onInterceptRequest((event) => {
