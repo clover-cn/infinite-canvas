@@ -25,7 +25,7 @@ import { usePluginViewScope } from "@workbench/hooks/use-plugin-view-scope";
 import { useMobileWeb } from "@workbench/hooks/use-mobile-web";
 
 const brand = <Link to="/" className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap text-base font-medium tracking-tight">
-    <span className="size-5 bg-current" style={{ mask: "url(/logo.svg) center / contain no-repeat" }} />无限画布
+    <span className="size-5 shrink-0"><img src={`${import.meta.env.BASE_URL}favicon.ico`} alt="" width={20} height={20} className="size-full object-contain" /></span>无限画布
 </Link>;
 
 type NavigationEntry = Omit<PluginLayoutProps["items"][number], "label"> & {
