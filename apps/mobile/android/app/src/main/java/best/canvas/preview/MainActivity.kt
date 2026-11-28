@@ -22,6 +22,7 @@ import java.io.IOException
 
 class MainActivity : Activity() {
     private lateinit var workbench: WebView
+    private lateinit var downloads: NativeDownloads
     private val nativeHttp = NativeHttp()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,6 +33,7 @@ class MainActivity : Activity() {
             setPadding(16, 12, 16, 12)
         }
         workbench = WebView(this)
+        downloads = NativeDownloads(contentResolver, WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER))
         val assets = WebViewAssetLoader.Builder()
             .setDomain(PREVIEW_HOST)
             .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this))
@@ -59,6 +61,9 @@ class MainActivity : Activity() {
             allowContentAccess = false
         }
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            WebViewCompat.addWebMessageListener(workbench, "CanvasNativeDownload", setOf("https://$PREVIEW_HOST")) { _, message, _, isMainFrame, reply ->
+                if (isMainFrame) downloads.receive(message, reply)
+            }
             WebViewCompat.addWebMessageListener(workbench, "CanvasNativeHttp", setOf("https://$PREVIEW_HOST")) { _, message, _, isMainFrame, reply ->
                 val payload = message.data
                 if (isMainFrame && payload != null) {
@@ -70,6 +75,7 @@ class MainActivity : Activity() {
         workbench.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 nativeHttp.close()
+                downloads.cancelActive()
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
@@ -121,6 +127,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         nativeHttp.close()
+        downloads.close()
         (workbench.parent as? LinearLayout)?.removeView(workbench)
         workbench.destroy()
         super.onDestroy()

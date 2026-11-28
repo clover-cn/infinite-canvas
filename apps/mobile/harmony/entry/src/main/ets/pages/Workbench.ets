@@ -1,5 +1,7 @@
+import { common } from '@kit.AbilityKit';
 import { webview, WebNetErrorList } from '@kit.ArkWeb';
 import { NativeHttp } from '../NativeHttp';
+import { NativeDownloads } from '../NativeDownloads';
 
 const PREVIEW_ORIGIN = 'https://canvas-preview.invalid/';
 const NATIVE_HTTP_PATH = PREVIEW_ORIGIN + '_native/http/';
@@ -24,7 +26,25 @@ const contentTypes = new Map<string, string>()
 struct Workbench {
   private controller: webview.WebviewController = new webview.WebviewController();
   private nativeHttp: NativeHttp = new NativeHttp();
+  private downloads: NativeDownloads | undefined = undefined;
   private pluginWorkerHandler: webview.WebSchemeHandler | undefined = undefined;
+
+  private attachDownloads(): void {
+    const ui = this.getUIContext();
+    const context = ui.getHostContext() as common.UIAbilityContext | undefined;
+    if (!context || this.downloads) return;
+    try {
+      const downloads = new NativeDownloads(context, (message: string) => {
+        try { ui.getPromptAction().showToast({ message }); } catch {
+          // 页面关闭后无需再显示提示。
+        }
+      });
+      downloads.attach(this.controller, PREVIEW_ORIGIN);
+      this.downloads = downloads;
+    } catch (error) {
+      console.error('注册下载处理器失败', error);
+    }
+  }
 
   private attachPluginWorker(): void {
     const manager = this.getUIContext().getHostContext()?.resourceManager;
@@ -108,6 +128,8 @@ struct Workbench {
 
   aboutToDisappear(): void {
     this.nativeHttp.close();
+    this.downloads?.close();
+    this.downloads = undefined;
     if (this.pluginWorkerHandler) {
       webview.WebviewController.clearServiceWorkerWebSchemeHandler();
       this.pluginWorkerHandler = undefined;
@@ -134,7 +156,10 @@ struct Workbench {
           methodList: ['stage', 'cancel'],
           controller: this.controller
         })
-        .onControllerAttached(() => this.attachPluginWorker())
+        .onControllerAttached(() => {
+          this.attachPluginWorker();
+          this.attachDownloads();
+        })
         .onPageBegin(() => this.nativeHttp.close())
         .onLoadIntercept((event) => !event.data.getRequestUrl().startsWith(PREVIEW_ORIGIN))
         .onInterceptRequest((event) => {

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, ChevronUp, Group, LoaderCircle, Video } from "lucide-react";
-import { saveAs } from "file-saver";
+import mime from "mime";
 
 import { useConfigStore } from "@workbench/stores/use-config-store";
 import { nanoid } from "nanoid";
@@ -39,6 +39,7 @@ import { registerChangedCanvasAssets } from "@workbench/lib/canvas/register-canv
 import { builtinPlugin, pluginRegistry, workspaceBinding } from "@workbench/lib/plugins/registry";
 import { readImageBlob } from "@workbench/services/image-storage";
 import { readMediaBlob } from "@workbench/services/file-storage";
+import { saveDownload } from "@workbench/services/save-download";
 import { readVideoPlayhead } from "@workbench/components/media-player";
 import type { CanvasDocumentOp } from "@infinite-canvas/shared/canvas/ops/apply";
 import { useAgentBridge } from "@workbench/pages/canvas/hooks/use-agent-bridge";
@@ -320,8 +321,10 @@ function InfiniteCanvasPage({ project, session }: { project: CanvasProject; sess
                 const { node, media, signal } = access;
                 const blob = media.kind === "image" ? await readImageBlob(media.storageKey, media.url, { signal }) : await readMediaBlob(media.storageKey, media.url, { signal });
                 signal.throwIfAborted();
-                const extension = media.kind === "video" ? "mp4" : media.kind === "audio" ? audioExtension(blob.type || node.metadata?.mimeType) : imageExtension(blob.type);
-                saveAs(blob, `canvas-${media.kind}-${node.id}${input.slotId !== undefined ? `-${input.slotId}` : ""}.${extension}`);
+                const mimeType = blob.type || node.metadata?.mimeType;
+                const extension = mime.getExtension(mimeType || "") || (media.kind === "video" ? "mp4" : media.kind === "audio" ? audioExtension(mimeType) : imageExtension(blob.type));
+                const name = `canvas-${media.kind}-${node.id}${input.slotId !== undefined ? `-${input.slotId}` : ""}.${extension}`;
+                if (await saveDownload(blob, name, signal)) toast.success("文件已保存到下载目录的无限画布文件夹。", workbenchMessageOptions.success);
             } finally { access.close(); }
         } })];
         const release = () => { for (const dispose of disposers) dispose(); for (const close of [...reads]) close(); imagePreviewRef.current?.close(); };
