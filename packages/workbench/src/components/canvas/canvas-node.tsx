@@ -351,7 +351,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                     />}
                 </div>
 
-                {supportsInteractionToggle && hasResource && !forceInteractive && contentInteractive ? (
+                {supportsInteractionToggle && !forceInteractive && data.metadata?.interactive ? (
                     // 交互模式下内容会接管鼠标，顶部留一条抓取条，保证仍能选中、拖动节点并呼出工具条。
                     <div aria-hidden="true" className="absolute inset-x-0 top-0 z-[55] flex h-5 cursor-move items-center justify-center rounded-t-[inherit] opacity-0 transition-opacity duration-150 group-hover/node:opacity-100" style={{ background: `linear-gradient(to bottom, color-mix(in srgb, ${theme.canvas.background} 70%, transparent), transparent)`, color: theme.node.muted }}>
                         <GripHorizontal className="size-4" />
